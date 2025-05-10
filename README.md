@@ -1,6 +1,6 @@
-# Control de Navegación
+# Timeward
 
-"Control de Navegación" is a Chrome Extension that helps you monitor and limit the time you spend on specific websites. It allows you to set daily time limits and define allowed time ranges for accessing distracting sites, helping you improve your productivity and manage your online habits.
+"Timeward" is a Chrome Extension that helps you monitor and limit the time you spend on specific websites. It allows you to set daily time limits and define allowed time ranges for accessing distracting sites, helping you improve your productivity and manage your online habits.
 
 ## Features
 
@@ -9,10 +9,12 @@
 *   **Unrestricted Sites:** Mark certain websites as unrestricted, allowing unlimited access.
 *   **Usage Statistics:** View how much time you've spent on each configured website today.
 *   **Blocking Page:** When a site is blocked due to exceeding limits or being outside allowed hours, you will be redirected to a simple blocked page.
+*   **Activations Table:** View a table of all site activations, including the time and duration of each visit.
+*   **Flexible Timeframes:** Configure time limits and restrictions with more granular control over time periods.
 
 ## Installation
 
-To install "Control de Navegación":
+To install "Timeward":
 
 1.  Download the extension files.
 2.  Open Google Chrome and go to `chrome://extensions/`.
