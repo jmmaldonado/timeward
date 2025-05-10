@@ -1,0 +1,79 @@
+/* css/style.css */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 15px;
+    background-color: #f9f9f9;
+    color: #333;
+    min-width: 400px; /* Para que el popup de opciones se vea bien */
+}
+
+h1, h2 {
+    color: #444;
+}
+
+label {
+    display: block;
+    margin-top: 8px;
+    margin-bottom: 3px;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="time"],
+button {
+    padding: 8px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    box-sizing: border-box; /* Para que el padding no aumente el ancho total */
+}
+
+input[type="text"],
+input[type="number"] {
+    width: 100%;
+}
+
+button {
+    background-color: #5cb85c;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+button:hover {
+    opacity: 0.9;
+}
+
+button.delete {
+    background-color: #d9534f;
+    margin-left: 5px;
+}
+
+#rulesList .rule-item {
+    background-color: #fff;
+    border: 1px solid #eee;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+}
+
+#rulesList .rule-item h3 {
+    margin-top: 0;
+    font-size: 1.1em;
+}
+
+#status {
+    margin-top: 10px;
+    font-weight: bold;
+}
+
+/* Estilos para la página de bloqueo (pueden ir en blocked.html o aquí) */
+.blocked-container {
+    text-align: center;
+    padding-top: 50px;
+}
+
+.blocked-container h1 {
+    color: #d9534f;
+}
