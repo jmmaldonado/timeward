@@ -47,16 +47,24 @@
 
         <button id="clearTrackingData" class="mt-6 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">Borrar Datos de Uso y Pestañas Visitadas</button>
 
-        <h2 class="text-xl font-semibold mb-3 mt-6">Gráfico de Activaciones</h2>
+        <h2 class="text-xl font-semibold mb-3 mt-6">Tabla de Activaciones</h2>
         <div class="mb-6">
-            <label for="timeResolution" class="block text-sm font-medium text-gray-700 mb-1">Resolución de tiempo:</label>
-            <select id="timeResolution" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                <option value="day">Todo el día</option>
-                <option value="hour">Última hora</option>
-                <option value="2hours">Últimas 2 horas</option>
-                <option value="4hours">Últimas 4 horas</option>
-                <option value="8hours">Últimas 8 horas</option>
-            </select>
+            <div class="flex items-center space-x-4 mb-4">
+                <div>
+                    <label for="activationDate" class="block text-sm font-medium text-gray-700 mb-1">Seleccionar fecha:</label>
+                    <input type="date" id="activationDate" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="timeResolution" class="block text-sm font-medium text-gray-700 mb-1">Resolución de tiempo:</label>
+                    <select id="timeResolution" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="day">Todo el día</option>
+                        <option value="hour">Última hora</option>
+                        <option value="2hours">Últimas 2 horas</option>
+                        <option value="4hours">Últimas 4 horas</option>
+                        <option value="8hours">Últimas 8 horas</option>
+                    </select>
+                </div>
+            </div>
             <div id="activationsTableContainer" class="mt-4">
                 <!-- Activation table will be rendered here by options.js -->
             </div>

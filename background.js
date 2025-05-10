@@ -415,15 +415,18 @@ const DEFAULT_RULES = {
     }
   
     // 2. Comprobar límite de tiempo diario
-    const usedTodayMinutes = siteUsage[todayStr] || 0;
-    let currentSessionMinutes = 0;
-  
+    const usedToday = (siteUsage[todayStr] ? siteUsage[todayStr] : { minutes: 0, seconds: 0, activationTimestamps: [] });
+    let currentSessionSeconds = 0;
+
     // Considerar el tiempo de la sesión activa actual que aún no se ha guardado
     if (siteTimers[host] && siteTimers[host].intervalId && siteTimers[host].lastFocusTime) {
-        currentSessionMinutes = Math.round((Date.now() - siteTimers[host].lastFocusTime) / (1000 * 60));
+        currentSessionSeconds = Math.round((Date.now() - siteTimers[host].lastFocusTime) / 1000);
     }
-    const totalMinutesConsidered = usedTodayMinutes + currentSessionMinutes;
-  
+
+    // Add current session time to the usage data for the check
+    let totalSecondsConsidered = (usedToday.minutes * 60) + usedToday.seconds + currentSessionSeconds;
+    let totalMinutesConsidered = Math.floor(totalSecondsConsidered / 60);
+
     if (siteRule.dailyLimitMinutes && totalMinutesConsidered >= siteRule.dailyLimitMinutes) {
       // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por límite de tiempo diario excedido (${totalMinutesConsidered}min / ${siteRule.dailyLimitMinutes}min)`);
       await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario (${siteRule.dailyLimitMinutes} min) alcanzado.`);
@@ -432,7 +435,7 @@ const DEFAULT_RULES = {
     // console.log(`Sitio ${host} verificado. No requiere bloqueo. Uso hoy: ${totalMinutesConsidered}min. Límite: ${siteRule.dailyLimitMinutes}min. Horario: ${siteRule.startTime}-${siteRule.endTime}`);
     return false; // No bloqueado
   }
-  
+
   async function blockTab(tabId, host, originalUrl, reason) {
     // Pausar el timer antes de redirigir para guardar el último fragmento de tiempo
     await pauseTrackingHostTime(host, Date.now());

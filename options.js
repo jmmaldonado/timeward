@@ -258,60 +258,101 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Gráfico de Activaciones ---
     const timeResolutionSelect = document.getElementById('timeResolution');
     const activationsTableContainer = document.getElementById('activationsTableContainer'); // New container for the table
+    const activationDateInput = document.getElementById('activationDate'); // Get the new date input
+
+    // Set the default date to today
+    const today = new Date();
+    const todayString = today.toISOString().split('T')[0];
+    activationDateInput.value = todayString;
 
     // Cargar y renderizar la tabla al iniciar
     renderActivationsTable();
 
-    // Actualizar la tabla cuando cambie la resolución de tiempo
+    // Update the table when the time resolution or date changes
     timeResolutionSelect.addEventListener('change', renderActivationsTable);
+    activationDateInput.addEventListener('change', renderActivationsTable); // Add event listener for date input
 
     async function renderActivationsTable() {
         const timeResolution = timeResolutionSelect.value;
+        const selectedDateString = activationDateInput.value; // Get the selected date
+        const selectedDate = new Date(selectedDateString);
+
         const { usageData } = await chrome.storage.local.get('usageData');
         const currentUsage = usageData || {};
-        const today = new Date().toISOString().split('T')[0];
+        const selectedDateKey = selectedDate.toISOString().split('T')[0]; // Use selected date for data key
 
         const now = new Date();
-        let overallStartTime = new Date(now);
+        let overallStartTime = new Date(selectedDate); // Start from the beginning of the selected day
         let bucketSizeMs;
         let timeUnit;
 
         switch (timeResolution) {
             case 'hour':
-                overallStartTime.setHours(now.getHours() - 1);
-                bucketSizeMs = 10 * 60 * 1000; // 10 minutes buckets for finer granularity in shorter timeframes
+                // For 'hour' resolution, we need to consider the time of day *today*
+                // relative to the selected date. This might be complex if the selected
+                // date is in the past. Let's simplify for now and assume 'hour', '2hours', etc.
+                // resolutions are relative to the *end* of the selected day, or the current time if today.
+                // A more robust solution might involve picking a specific time on the selected date.
+                // For now, let's keep it simple and apply the time resolution window relative to the end of the selected day.
+                // If the selected date is today, use the current time as the end point.
+                // If the selected date is in the past, use the end of that day as the end point.
+
+                const endPoint = selectedDateKey === todayString ? now : new Date(selectedDate);
+                if (selectedDateKey !== todayString) {
+                    endPoint.setHours(23, 59, 59, 999);
+                }
+
+                overallStartTime = new Date(endPoint);
+                overallStartTime.setHours(endPoint.getHours() - 1);
+                bucketSizeMs = 10 * 60 * 1000; // 10 minutes buckets
                 timeUnit = 'minute';
                 break;
             case '2hours':
-                overallStartTime.setHours(now.getHours() - 2);
+                 const endPoint2 = selectedDateKey === todayString ? now : new Date(selectedDate);
+                if (selectedDateKey !== todayString) {
+                    endPoint2.setHours(23, 59, 59, 999);
+                }
+                overallStartTime = new Date(endPoint2);
+                overallStartTime.setHours(endPoint2.getHours() - 2);
                 bucketSizeMs = 15 * 60 * 1000; // 15 minutes buckets
                 timeUnit = 'minute';
                 break;
             case '4hours':
-                overallStartTime.setHours(now.getHours() - 4);
+                 const endPoint4 = selectedDateKey === todayString ? now : new Date(selectedDate);
+                if (selectedDateKey !== todayString) {
+                    endPoint4.setHours(23, 59, 59, 999);
+                }
+                overallStartTime = new Date(endPoint4);
+                overallStartTime.setHours(endPoint4.getHours() - 4);
                 bucketSizeMs = 30 * 60 * 1000; // 30 minutes buckets
                 timeUnit = 'minute';
                 break;
             case '8hours':
-                overallStartTime.setHours(now.getHours() - 8);
+                 const endPoint8 = selectedDateKey === todayString ? now : new Date(selectedDate);
+                if (selectedDateKey !== todayString) {
+                    endPoint8.setHours(23, 59, 59, 999);
+                }
+                overallStartTime = new Date(endPoint8);
+                overallStartTime.setHours(endPoint8.getHours() - 8);
                 bucketSizeMs = 60 * 60 * 1000; // 1 hour buckets
                 timeUnit = 'hour';
                 break;
             case 'day':
             default:
-                overallStartTime.setHours(0, 0, 0, 0); // Start of today
+                overallStartTime.setHours(0, 0, 0, 0); // Start of selected day
                 bucketSizeMs = 60 * 60 * 1000; // 1 hour buckets
                 timeUnit = 'hour';
                 break;
         }
-        const overallEndTime = now.getTime();
+        const overallEndTime = selectedDateKey === todayString ? now.getTime() : new Date(selectedDate).setHours(23, 59, 59, 999);
+
 
         const aggregatedData = {}; // { host: { bucketStartTime: count } }
         const timeBuckets = new Set();
 
         for (const host in currentUsage) {
-            if (currentUsage[host] && currentUsage[host][today] && currentUsage[host][today].activationTimestamps) {
-                const timestamps = currentUsage[host][today].activationTimestamps.filter(ts => ts >= overallStartTime.getTime() && ts <= overallEndTime);
+            if (currentUsage[host] && currentUsage[host][selectedDateKey] && currentUsage[host][selectedDateKey].activationTimestamps) {
+                const timestamps = currentUsage[host][selectedDateKey].activationTimestamps.filter(ts => ts >= overallStartTime.getTime() && ts <= overallEndTime);
 
                 if (timestamps.length > 0) {
                     aggregatedData[host] = {};
@@ -337,8 +378,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let tableHTML = '<table class="min-w-full divide-y divide-gray-200">';
         tableHTML += '<thead class="bg-gray-50"><tr>';
         tableHTML += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sitio Web</th>';
-
-        const timeFormat = timeUnit === 'hour' ? 'HH:mm' : 'HH:mm'; // Display format for column headers
 
         for (const bucketTime of sortedTimeBuckets) {
             const date = new Date(bucketTime);
