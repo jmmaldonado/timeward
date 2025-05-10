@@ -88,35 +88,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadRules() {
-        const { rules } = await chrome.storage.local.get('rules');
+        const { rules, usageData } = await chrome.storage.local.get(['rules', 'usageData']);
         const currentRules = rules || {};
+        const currentUsage = usageData || {};
         rulesListDiv.innerHTML = ''; // Limpiar lista actual
 
         if (Object.keys(currentRules).length === 0) {
-            rulesListDiv.innerHTML = '<p>No hay reglas configuradas.</p>';
+            rulesListDiv.innerHTML = '<p class="text-gray-600">No hay reglas configuradas.</p>';
             return;
         }
 
+        const today = new Date().toISOString().split('T')[0];
+
         for (const host in currentRules) {
             const rule = currentRules[host];
-            const ruleDiv = document.createElement('div');
-            ruleDiv.classList.add('rule-item');
+            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, activations: 0 };
 
-            let details = `<h3>${host}</h3>`;
+            const ruleDiv = document.createElement('div');
+            ruleDiv.classList.add('rule-item', 'flex', 'items-center', 'justify-between', 'p-4', 'border', 'border-gray-200', 'rounded-md', 'bg-white', 'shadow-sm');
+
+            let details = `<div class="flex-1">
+                                <h3 class="text-lg font-semibold text-gray-800">${host}</h3>`;
             if (rule.unrestricted) {
-                details += '<p>Acceso ilimitado.</p>';
+                details += `<p class="text-sm text-gray-600">Acceso ilimitado.</p>`;
             } else {
-                details += `<p>Límite diario: ${rule.dailyLimitMinutes !== null && rule.dailyLimitMinutes !== undefined ? rule.dailyLimitMinutes + ' minutos' : 'No establecido'}</p>`;
-                details += `<p>Horario: ${rule.startTime || 'N/A'} - ${rule.endTime || 'N/A'}</p>`;
+                details += `<p class="text-sm text-gray-600">Límite diario: ${rule.dailyLimitMinutes !== null && rule.dailyLimitMinutes !== undefined ? rule.dailyLimitMinutes + ' minutos' : 'No establecido'}</p>`;
+                details += `<p class="text-sm text-gray-600">Horario: ${rule.startTime || 'N/A'} - ${rule.endTime || 'N/A'}</p>`;
             }
+            details += `</div>`;
+
+            // Add usage stats to the rule item
+            details += `<div class="flex-shrink-0 text-right ml-4">
+                            <p class="text-sm text-gray-700">${usageToday.minutes} min, ${usageToday.activations} activaciones hoy</p>
+                        </div>`;
+
+
+            const actionsDiv = document.createElement('div');
+            actionsDiv.classList.add('flex-shrink-0', 'ml-4', 'flex', 'space-x-2');
 
             const editButton = document.createElement('button');
             editButton.textContent = 'Editar';
+            editButton.classList.add('px-3', 'py-1', 'bg-blue-500', 'text-white', 'rounded-md', 'hover:bg-blue-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-offset-2', 'text-sm');
             editButton.addEventListener('click', () => populateFormForRule(host, rule));
 
             const deleteButton = document.createElement('button');
             deleteButton.textContent = 'Eliminar';
-            deleteButton.classList.add('delete');
+            deleteButton.classList.add('px-3', 'py-1', 'bg-red-500', 'text-white', 'rounded-md', 'hover:bg-red-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-red-500', 'focus:ring-offset-2', 'text-sm');
             deleteButton.addEventListener('click', async () => {
                 if (confirm(`¿Seguro que quieres eliminar la regla para ${host}?`)) {
                     delete currentRules[host];
@@ -132,8 +149,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             ruleDiv.innerHTML = details;
-            ruleDiv.appendChild(editButton);
-            ruleDiv.appendChild(deleteButton);
+            actionsDiv.appendChild(editButton);
+            actionsDiv.appendChild(deleteButton);
+            ruleDiv.appendChild(actionsDiv);
             rulesListDiv.appendChild(ruleDiv);
         }
     }
