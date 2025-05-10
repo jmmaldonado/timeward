@@ -163,14 +163,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toISOString().split('T')[0];
         let foundStats = false;
 
-        for (const host in currentRules) {
-            if (currentRules[host].unrestricted) continue; // No mostrar stats para irrestrictos
+        // Get all hosts that have usage data or rules (excluding unrestricted)
+        const trackedHosts = new Set([
+            ...Object.keys(currentUsage),
+            ...Object.keys(currentRules).filter(host => !currentRules[host].unrestricted)
+        ]);
 
-            const usageTodayMinutes = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : 0;
+
+        if (trackedHosts.size === 0) {
+            usageStatsDiv.innerHTML = '<p>No hay estadísticas de uso disponibles.</p>';
+            return;
+        }
+
+        // Sort hosts alphabetically for consistent display
+        const sortedHosts = Array.from(trackedHosts).sort();
+
+        for (const host of sortedHosts) {
+            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, activations: 0 };
             const siteRule = currentRules[host];
             
             const p = document.createElement('p');
-            let statText = `<strong>${host}:</strong> ${usageTodayMinutes} minutos usados hoy.`;
+            let statText = `<strong>${host}:</strong> ${usageToday.minutes} minutos, ${usageToday.activations} activaciones hoy.`;
             if (siteRule && siteRule.dailyLimitMinutes) {
                 statText += ` (Límite: ${siteRule.dailyLimitMinutes} min).`;
             }
@@ -180,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!foundStats) {
-            usageStatsDiv.innerHTML = '<p>No hay estadísticas de uso para hoy o no hay sitios con límites configurados.</p>';
+            usageStatsDiv.innerHTML = '<p>No hay estadísticas de uso disponibles.</p>';
         }
     }
 
@@ -194,4 +207,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Actualizar estadísticas periódicamente o cuando se abra el popup
     setInterval(loadUsageStats, 30 * 1000); // Cada 30 segundos
+
+    const clearTrackingDataButton = document.getElementById('clearTrackingData');
+    clearTrackingDataButton.addEventListener('click', async () => {
+        if (confirm("¿Estás seguro de que quieres borrar todos los datos de uso y pestañas visitadas? Las reglas configuradas no se eliminarán.")) {
+            await chrome.storage.local.remove(['usageData', 'visitedTabs']);
+            showStatus("Datos de uso y pestañas visitadas borrados.", false);
+            loadUsageStats(); // Recargar estadísticas para mostrar que están vacías
+        }
+    });
 });

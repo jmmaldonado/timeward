@@ -8,7 +8,11 @@ const DEFAULT_RULES = {
   };
   
   const DEFAULT_USAGE = {
-    // Ejemplo: "youtube.com": { "2025-05-10": 0 } // minutos usados hoy
+    // Ejemplo: "youtube.com": { "2025-05-10": { minutes: 0, activations: 0 } } // minutos y activaciones usados hoy
+  };
+  
+  const DEFAULT_VISITED_TABS = {
+    // Ejemplo: "2025-05-10": ["url1", "url2"]
   };
   
   let siteTimers = {}; // Almacena los temporizadores activos: { "hostname": { intervalId: null, activeTabId: null, lastFocusTime: null } }
@@ -20,7 +24,7 @@ const DEFAULT_RULES = {
   // --- Inicialización y Alarmas ---
   chrome.runtime.onInstalled.addListener(async () => {
     console.log("Extensión instalada/actualizada.");
-    await chrome.storage.local.get(["rules", "usageData"], (result) => {
+    await chrome.storage.local.get(["rules", "usageData", "visitedTabs"], (result) => {
       if (!result.rules) {
         chrome.storage.local.set({ rules: DEFAULT_RULES });
         console.log("Reglas por defecto establecidas.");
@@ -28,6 +32,10 @@ const DEFAULT_RULES = {
       if (!result.usageData) {
         chrome.storage.local.set({ usageData: DEFAULT_USAGE });
         console.log("Datos de uso por defecto establecidos.");
+      }
+      if (!result.visitedTabs) {
+        chrome.storage.local.set({ visitedTabs: DEFAULT_VISITED_TABS });
+        console.log("Datos de pestañas visitadas por defecto establecidos.");
       }
     });
   
@@ -68,11 +76,12 @@ const DEFAULT_RULES = {
   });
   
   async function resetDailyUsage() {
-    console.log("Reseteando datos de uso diario...");
-    await chrome.storage.local.set({ usageData: DEFAULT_USAGE });
+    console.log("Reseteando datos de uso diario y pestañas visitadas...");
+    // Reset usageData to the default structure with minutes and activations
+    await chrome.storage.local.set({ usageData: DEFAULT_USAGE, visitedTabs: DEFAULT_VISITED_TABS });
     // También podrías querer resetear los timers en memoria si es necesario
     siteTimers = {};
-    console.log("Datos de uso diario reseteados.");
+    console.log("Datos de uso diario y pestañas visitadas reseteados.");
   }
   
   // --- Seguimiento del Foco del Navegador ---
@@ -102,6 +111,24 @@ const DEFAULT_RULES = {
     console.log("Pestaña activada:", activeInfo.tabId);
     lastKnownActiveTabId = activeInfo.tabId;
     lastKnownWindowId = activeInfo.windowId;
+
+    // Registrar la URL de la pestaña activada y contar la activación
+    chrome.tabs.get(activeInfo.tabId, (tab) => {
+      if (tab && tab.url) {
+        recordVisitedTab(tab.url);
+        const host = getHostFromUrl(tab.url);
+        if (host) {
+          recordActivation(host);
+        }
+      }
+    });
+
+    // Registrar la URL de la pestaña activada
+    chrome.tabs.get(activeInfo.tabId, (tab) => {
+      if (tab && tab.url) {
+        recordVisitedTab(tab.url);
+      }
+    });
   
     // Pausar el timer de la pestaña anteriormente activa (si la hubo)
     for (const host in siteTimers) {
@@ -126,6 +153,10 @@ const DEFAULT_RULES = {
     // Interesa 'complete' para asegurar que la URL es la final
     if (changeInfo.status === 'complete' && tab.url) {
       console.log("Pestaña actualizada:", tabId, tab.url);
+      // Registrar la URL de la pestaña actualizada si está activa
+      if (tab.active) {
+        recordVisitedTab(tab.url);
+      }
       const host = getHostFromUrl(tab.url);
       if (host) {
         await checkAndBlockIfNeeded(tabId, host, tab.url);
@@ -170,13 +201,52 @@ const DEFAULT_RULES = {
     try {
       const url = new URL(urlString);
       if (url.protocol === "http:" || url.protocol === "https:") {
-        // Quitar 'www.' si existe para consistencia
-        return url.hostname.startsWith("www.") ? url.hostname.substring(4) : url.hostname;
+        const hostname = url.hostname;
+        const parts = hostname.split('.');
+        // Simple approach: take the last two parts for the main domain
+        if (parts.length > 1) {
+          // Handle cases like co.uk, com.au, etc. (basic handling)
+          if (parts.length > 2 && (parts[parts.length - 2].length <= 3 || parts[parts.length - 1].length <= 2)) {
+             return parts.slice(-3).join('.');
+          }
+          return parts.slice(-2).join('.');
+        }
+        return hostname; // Return hostname if it's just a single part
       }
     } catch (e) {
       console.warn("URL inválida o no HTTP/S:", urlString, e);
     }
     return null;
+  }
+  
+  async function recordVisitedTab(urlString) {
+    if (!urlString) return;
+
+    try {
+      const url = new URL(urlString);
+      // Excluir URLs internas de la extensión y URLs de datos
+      if (url.protocol === "chrome-extension:" || url.protocol === "data:") {
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const { visitedTabs } = await chrome.storage.local.get("visitedTabs");
+      const currentVisitedTabs = visitedTabs || DEFAULT_VISITED_TABS;
+
+      if (!currentVisitedTabs[today]) {
+        currentVisitedTabs[today] = [];
+      }
+
+      // Evitar duplicados consecutivos si el usuario recarga o navega a la misma URL
+      if (currentVisitedTabs[today].length === 0 || currentVisitedTabs[today][currentVisitedTabs[today].length - 1] !== urlString) {
+        currentVisitedTabs[today].push(urlString);
+        await chrome.storage.local.set({ visitedTabs: currentVisitedTabs });
+        console.log(`Pestaña visitada registrada para hoy: ${urlString}`);
+      }
+
+    } catch (e) {
+      console.warn("URL inválida al intentar registrar pestaña visitada:", urlString, e);
+    }
   }
   
   async function startTrackingHostTime(host, tabId) {
@@ -224,6 +294,32 @@ const DEFAULT_RULES = {
     }
   }
   
+  async function recordActivation(host) {
+    if (!host) return;
+
+    const { usageData, rules } = await chrome.storage.local.get(["usageData", "rules"]);
+    const currentUsage = usageData || DEFAULT_USAGE;
+    const siteRule = (rules || DEFAULT_RULES)[host];
+
+    if (siteRule && siteRule.unrestricted) {
+      return; // No contar activaciones para sitios irrestrictos
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    if (!currentUsage[host]) {
+      currentUsage[host] = {};
+    }
+    if (!currentUsage[host][today]) {
+      currentUsage[host][today] = { minutes: 0, activations: 0 };
+    }
+
+    currentUsage[host][today].activations = (currentUsage[host][today].activations || 0) + 1;
+
+    await chrome.storage.local.set({ usageData: currentUsage });
+    console.log(`Activación registrada para ${host}. Total hoy: ${currentUsage[host][today].activations} activaciones.`);
+  }
+
   async function recordTimeSpent(host, seconds) {
     console.log(`[recordTimeSpent] host: ${host}, seconds: ${seconds}`);
     if (!host || seconds <= 0) return;
@@ -242,10 +338,14 @@ const DEFAULT_RULES = {
     if (!currentUsage[host]) {
       currentUsage[host] = {};
     }
-    currentUsage[host][today] = (currentUsage[host][today] || 0) + Math.round(seconds / 60); // Guardar en minutos
+    if (!currentUsage[host][today]) {
+      currentUsage[host][today] = { minutes: 0, activations: 0 };
+    }
+
+    currentUsage[host][today].minutes = (currentUsage[host][today].minutes || 0) + Math.round(seconds / 60); // Guardar en minutos
   
     await chrome.storage.local.set({ usageData: currentUsage });
-    console.log(`Registrados ${seconds}s (${Math.round(seconds/60)} min) para ${host}. Total hoy: ${currentUsage[host][today]} min.`);
+    console.log(`Registrados ${seconds}s (${Math.round(seconds/60)} min) para ${host}. Total hoy: ${currentUsage[host][today].minutes} min.`);
   }
   
   async function processActiveTabTime() {
