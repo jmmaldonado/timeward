@@ -4,129 +4,46 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Opciones de Control de Navegación</title>
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        /* Estilos básicos adicionales para la página de opciones */
-        body {
-            font-family: sans-serif;
-            margin: 20px;
-            background-color: #f4f4f4;
-            color: #333;
-            min-width: 500px; /* Ancho mínimo para el popup/página de opciones */
-        }
-        .container {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        h1, h2 {
-            color: #333;
-        }
-        label {
-            display: block;
-            margin-top: 10px;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input[type="text"], input[type="number"], input[type="time"] {
-            width: calc(100% - 22px);
-            padding: 10px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        input[type="checkbox"] {
-            margin-right: 5px;
-            vertical-align: middle;
-        }
-        button {
-            background-color: #5cb85c;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
-            margin-right: 5px;
-        }
-        button:hover {
-            background-color: #4cae4c;
-        }
-        button.delete {
-            background-color: #d9534f;
-        }
-        button.delete:hover {
-            background-color: #c9302c;
-        }
-        .rule-item {
-            border: 1px solid #eee;
-            padding: 15px;
-            margin-bottom: 15px;
-            border-radius: 4px;
-            background-color: #f9f9f9;
-        }
-        .rule-item h3 {
-            margin-top: 0;
-            color: #555;
-        }
-        .time-inputs {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        .time-inputs input[type="time"] {
-            width: auto;
-        }
-        .usage-stats {
-            margin-top: 20px;
-            padding-top: 10px;
-            border-top: 1px solid #eee;
-        }
-        .usage-stats p {
-            font-size: 0.9em;
-            color: #666;
-        }
-    </style>
+    <script src="tailwind.js"></script>
 </head>
-<body>
-    <div class="container">
-        <h1>Configuración de Control de Navegación</h1>
+<body class="bg-gray-100 text-gray-800 p-5 min-w-[500px]">
+    <div class="container bg-white p-6 rounded-lg shadow-md mx-auto">
+        <h1 class="text-2xl font-bold mb-4">Configuración de Control de Navegación</h1>
 
-        <h2>Añadir/Modificar Regla</h2>
-        <div>
-            <label for="hostname">Sitio web (ej: youtube.com, sin http/www):</label>
-            <input type="text" id="hostname" placeholder="ej: youtube.com">
+        <h2 class="text-xl font-semibold mb-3 mt-6">Añadir/Modificar Regla</h2>
+        <div class="mb-6">
+            <label for="hostname" class="block text-sm font-medium text-gray-700 mb-1">Sitio web (ej: youtube.com, sin http/www):</label>
+            <input type="text" id="hostname" placeholder="ej: youtube.com" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
 
-            <input type="checkbox" id="unrestricted">
-            <label for="unrestricted" style="display: inline-block; font-weight: normal;">Acceso ilimitado</label>
+            <div class="flex items-center mt-2">
+                <input type="checkbox" id="unrestricted" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <label for="unrestricted" class="ml-2 block text-sm text-gray-900 font-normal">Acceso ilimitado</label>
+            </div>
 
-            <div id="limits-section">
-                <label for="dailyLimit">Límite diario (minutos):</label>
-                <input type="number" id="dailyLimit" min="0" placeholder="ej: 30">
+            <div id="limits-section" class="mt-4">
+                <label for="dailyLimit" class="block text-sm font-medium text-gray-700 mb-1">Límite diario (minutos):</label>
+                <input type="number" id="dailyLimit" min="0" placeholder="ej: 30" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
 
-                <label>Horario permitido:</label>
-                <div class="time-inputs">
-                    <input type="time" id="startTime">
+                <label class="block text-sm font-medium text-gray-700 mb-1 mt-3">Horario permitido:</label>
+                <div class="time-inputs flex items-center space-x-4">
+                    <input type="time" id="startTime" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                     <span>hasta</span>
-                    <input type="time" id="endTime">
+                    <input type="time" id="endTime" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                 </div>
             </div>
-            <button id="saveRule">Guardar Regla</button>
-            <p id="status" style="color: green;"></p>
+            <button id="saveRule" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">Guardar Regla</button>
+            <p id="status" class="mt-3 text-sm text-green-600"></p>
         </div>
 
-        <h2>Reglas Actuales</h2>
-        <div id="rulesList">
+        <h2 class="text-xl font-semibold mb-3 mt-6">Reglas Actuales</h2>
+        <div id="rulesList" class="space-y-4">
             </div>
 
-        <h2>Estadísticas de Uso (Hoy)</h2>
-        <div id="usageStats" class="usage-stats">
+        <h2 class="text-xl font-semibold mb-3 mt-6">Estadísticas de Uso (Hoy)</h2>
+        <div id="usageStats" class="usage-stats mt-4 pt-4 border-t border-gray-200 space-y-2">
             </div>
 
-        <button id="clearTrackingData">Borrar Datos de Uso y Pestañas Visitadas</button>
+        <button id="clearTrackingData" class="mt-6 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">Borrar Datos de Uso y Pestañas Visitadas</button>
     </div>
 
     <script src="options.js"></script>
