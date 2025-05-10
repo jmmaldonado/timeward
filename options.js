@@ -71,9 +71,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Notificar al background script que las reglas han cambiado
         chrome.runtime.sendMessage({ type: "rulesChanged" }, (response) => {
             if (chrome.runtime.lastError) {
-                console.warn("Error al enviar mensaje a background:", chrome.runtime.lastError.message);
+                // console.warn("Error al enviar mensaje a background:", chrome.runtime.lastError.message);
             } else {
-                console.log("Mensaje rulesChanged enviado, respuesta:", response);
+                // console.log("Mensaje rulesChanged enviado, respuesta:", response);
             }
         });
     });
@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (const host in currentRules) {
             const rule = currentRules[host];
-            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, activations: 0 };
+            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, seconds: 0, activationTimestamps: [] };
 
             const ruleDiv = document.createElement('div');
             ruleDiv.classList.add('rule-item', 'flex', 'items-center', 'justify-between', 'p-4', 'border', 'border-gray-200', 'rounded-md', 'bg-white', 'shadow-sm');
@@ -118,8 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
             details += `</div>`;
 
             // Add usage stats to the rule item
+            const activationCount = (usageToday.activationTimestamps || []).length;
             details += `<div class="flex-shrink-0 text-right ml-4">
-                            <p class="text-sm text-gray-700">${usageToday.minutes} min, ${usageToday.activations} activaciones hoy</p>
+                            <p class="text-sm text-gray-700">${usageToday.minutes} min, ${usageToday.seconds} s, ${activationCount} activaciones hoy</p>
                         </div>`;
 
 
@@ -142,8 +143,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     showStatus(`Regla para '${host}' eliminada.`, false);
                      // Notificar al background script
                     chrome.runtime.sendMessage({ type: "rulesChanged" }, (response) => {
-                        if (chrome.runtime.lastError) console.warn("Error al enviar mensaje:", chrome.runtime.lastError.message);
-                        else console.log("Mensaje rulesChanged enviado tras eliminar, respuesta:", response);
+                        if (chrome.runtime.lastError) {
+                            // console.warn("Error al enviar mensaje:", chrome.runtime.lastError.message);
+                        } else {
+                            // console.log("Mensaje rulesChanged enviado tras eliminar, respuesta:", response);
+                        }
                     });
                 }
             });
@@ -197,15 +201,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortedHosts = Array.from(trackedHosts).sort();
 
         for (const host of sortedHosts) {
-            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, activations: 0 };
+            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, seconds: 0, activationTimestamps: [] };
             const siteRule = currentRules[host];
             
             const p = document.createElement('p');
-            let statText = `<strong>${host}:</strong> ${usageToday.minutes} minutos, ${usageToday.activations} activaciones hoy.`;
+            p.classList.add('flex', 'items-center', 'justify-between', 'text-sm', 'text-gray-700'); // Add flex classes for layout
+
+            const activationCount = (usageToday.activationTimestamps || []).length;
+            let statText = `<strong>${host}:</strong> ${usageToday.minutes} minutos, ${usageToday.seconds} segundos, ${activationCount} activaciones hoy.`;
             if (siteRule && siteRule.dailyLimitMinutes) {
                 statText += ` (Límite: ${siteRule.dailyLimitMinutes} min).`;
             }
-            p.innerHTML = statText;
+            
+            const textSpan = document.createElement('span');
+            textSpan.innerHTML = statText;
+            p.appendChild(textSpan);
+
+            const createRuleButton = document.createElement('button');
+            createRuleButton.textContent = 'Crear Regla';
+            createRuleButton.classList.add('ml-4', 'px-3', 'py-1', 'bg-blue-500', 'text-white', 'rounded-md', 'hover:bg-blue-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-offset-2', 'text-sm', 'flex-shrink-0');
+            createRuleButton.addEventListener('click', () => {
+                populateFormForRule(host, {}); // Populate form with host and empty rule
+            });
+            p.appendChild(createRuleButton);
+
             usageStatsDiv.appendChild(p);
             foundStats = true;
         }
@@ -232,6 +251,139 @@ document.addEventListener('DOMContentLoaded', () => {
             await chrome.storage.local.remove(['usageData', 'visitedTabs']);
             showStatus("Datos de uso y pestañas visitadas borrados.", false);
             loadUsageStats(); // Recargar estadísticas para mostrar que están vacías
+            renderActivationsTable(); // Recargar tabla
         }
     });
+
+    // --- Gráfico de Activaciones ---
+    const timeResolutionSelect = document.getElementById('timeResolution');
+    const activationsTableContainer = document.getElementById('activationsTableContainer'); // New container for the table
+
+    // Cargar y renderizar la tabla al iniciar
+    renderActivationsTable();
+
+    // Actualizar la tabla cuando cambie la resolución de tiempo
+    timeResolutionSelect.addEventListener('change', renderActivationsTable);
+
+    async function renderActivationsTable() {
+        const timeResolution = timeResolutionSelect.value;
+        const { usageData } = await chrome.storage.local.get('usageData');
+        const currentUsage = usageData || {};
+        const today = new Date().toISOString().split('T')[0];
+
+        const now = new Date();
+        let overallStartTime = new Date(now);
+        let bucketSizeMs;
+        let timeUnit;
+
+        switch (timeResolution) {
+            case 'hour':
+                overallStartTime.setHours(now.getHours() - 1);
+                bucketSizeMs = 10 * 60 * 1000; // 10 minutes buckets for finer granularity in shorter timeframes
+                timeUnit = 'minute';
+                break;
+            case '2hours':
+                overallStartTime.setHours(now.getHours() - 2);
+                bucketSizeMs = 15 * 60 * 1000; // 15 minutes buckets
+                timeUnit = 'minute';
+                break;
+            case '4hours':
+                overallStartTime.setHours(now.getHours() - 4);
+                bucketSizeMs = 30 * 60 * 1000; // 30 minutes buckets
+                timeUnit = 'minute';
+                break;
+            case '8hours':
+                overallStartTime.setHours(now.getHours() - 8);
+                bucketSizeMs = 60 * 60 * 1000; // 1 hour buckets
+                timeUnit = 'hour';
+                break;
+            case 'day':
+            default:
+                overallStartTime.setHours(0, 0, 0, 0); // Start of today
+                bucketSizeMs = 60 * 60 * 1000; // 1 hour buckets
+                timeUnit = 'hour';
+                break;
+        }
+        const overallEndTime = now.getTime();
+
+        const aggregatedData = {}; // { host: { bucketStartTime: count } }
+        const timeBuckets = new Set();
+
+        for (const host in currentUsage) {
+            if (currentUsage[host] && currentUsage[host][today] && currentUsage[host][today].activationTimestamps) {
+                const timestamps = currentUsage[host][today].activationTimestamps.filter(ts => ts >= overallStartTime.getTime() && ts <= overallEndTime);
+
+                if (timestamps.length > 0) {
+                    aggregatedData[host] = {};
+                    for (let ts of timestamps) {
+                        const bucketStart = Math.floor(ts / bucketSizeMs) * bucketSizeMs;
+                        aggregatedData[host][bucketStart] = (aggregatedData[host][bucketStart] || 0) + 1;
+                        timeBuckets.add(bucketStart);
+                    }
+                }
+            }
+        }
+
+        // Calculate total activations for each host
+        const hostTotals = {};
+        for (const host in aggregatedData) {
+            hostTotals[host] = Object.values(aggregatedData[host]).reduce((sum, count) => sum + count, 0);
+        }
+
+        // Sort hosts by total activations in descending order
+        const sortedHosts = Object.keys(aggregatedData).sort((a, b) => hostTotals[b] - hostTotals[a]);
+        const sortedTimeBuckets = Array.from(timeBuckets).sort((a, b) => a - b);
+
+        let tableHTML = '<table class="min-w-full divide-y divide-gray-200">';
+        tableHTML += '<thead class="bg-gray-50"><tr>';
+        tableHTML += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sitio Web</th>';
+
+        const timeFormat = timeUnit === 'hour' ? 'HH:mm' : 'HH:mm'; // Display format for column headers
+
+        for (const bucketTime of sortedTimeBuckets) {
+            const date = new Date(bucketTime);
+            tableHTML += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</th>`;
+        }
+        tableHTML += '</tr></thead>';
+        tableHTML += '<tbody class="bg-white divide-y divide-gray-200">';
+
+        if (sortedHosts.length === 0) {
+            tableHTML += '<tr><td colspan="' + (sortedTimeBuckets.length + 1) + '" class="px-6 py-4 text-center text-sm text-gray-500">No hay datos de activación para mostrar en este período.</td></tr>';
+        } else {
+            for (const host of sortedHosts) {
+                tableHTML += '<tr>';
+                tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${host}</td>`;
+                for (const bucketTime of sortedTimeBuckets) {
+                    const count = aggregatedData[host][bucketTime] || 0;
+                    tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${count}</td>`;
+                }
+                tableHTML += '</tr>';
+            }
+        }
+
+        tableHTML += '</tbody></table>';
+
+        activationsTableContainer.innerHTML = tableHTML;
+    }
+
+    // Helper function to get host from URL (replicated from background.js for now)
+    function getHostFromUrl(urlString) {
+        try {
+          const url = new URL(urlString);
+          if (url.protocol === "http:" || url.protocol === "https:") {
+            const hostname = url.hostname;
+            const parts = hostname.split('.');
+            if (parts.length > 1) {
+              if (parts.length > 2 && (parts[parts.length - 2].length <= 3 || parts[parts.length - 1].length <= 2)) {
+                 return parts.slice(-3).join('.');
+              }
+              return parts.slice(-2).join('.');
+            }
+            return hostname;
+          }
+        } catch (e) {
+          // console.warn("URL inválida o no HTTP/S:", urlString, e);
+        }
+        return null;
+      }
 });

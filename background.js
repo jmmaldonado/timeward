@@ -8,7 +8,7 @@ const DEFAULT_RULES = {
   };
   
   const DEFAULT_USAGE = {
-    // Ejemplo: "youtube.com": { "2025-05-10": { minutes: 0, activations: 0 } } // minutos y activaciones usados hoy
+    // Ejemplo: "youtube.com": { "2025-05-10": { minutes: 0, seconds: 0, activationTimestamps: [] } } // minutos, segundos y array de timestamps de activación
   };
   
   const DEFAULT_VISITED_TABS = {
@@ -23,19 +23,19 @@ const DEFAULT_RULES = {
   
   // --- Inicialización y Alarmas ---
   chrome.runtime.onInstalled.addListener(async () => {
-    console.log("Extensión instalada/actualizada.");
+    // console.log("Extensión instalada/actualizada.");
     await chrome.storage.local.get(["rules", "usageData", "visitedTabs"], (result) => {
       if (!result.rules) {
         chrome.storage.local.set({ rules: DEFAULT_RULES });
-        console.log("Reglas por defecto establecidas.");
+        // console.log("Reglas por defecto establecidas.");
       }
       if (!result.usageData) {
         chrome.storage.local.set({ usageData: DEFAULT_USAGE });
-        console.log("Datos de uso por defecto establecidos.");
+        // console.log("Datos de uso por defecto establecidos.");
       }
       if (!result.visitedTabs) {
         chrome.storage.local.set({ visitedTabs: DEFAULT_VISITED_TABS });
-        console.log("Datos de pestañas visitadas por defecto establecidos.");
+        // console.log("Datos de pestañas visitadas por defecto establecidos.");
       }
     });
   
@@ -50,7 +50,7 @@ const DEFAULT_RULES = {
       delayInMinutes: 1,
       periodInMinutes: 1
     });
-    console.log("Alarmas creadas: dailyReset y periodicCheck.");
+    // console.log("Alarmas creadas: dailyReset y periodicCheck.");
   });
   
   function getNextMidnight() {
@@ -61,12 +61,12 @@ const DEFAULT_RULES = {
       now.getDate() + 1, // Mañana
       0, 0, 5, 0 // 00:00:05 para asegurar que es después de medianoche
     );
-    console.log("Próximo reseteo diario:", nextMidnight.toLocaleString());
+    // console.log("Próximo reseteo diario:", nextMidnight.toLocaleString());
     return nextMidnight.getTime();
   }
   
   chrome.alarms.onAlarm.addListener(async (alarm) => {
-    console.log("Alarma disparada:", alarm.name);
+    // console.log("Alarma disparada:", alarm.name);
     if (alarm.name === "dailyReset") {
       await resetDailyUsage();
     } else if (alarm.name === "periodicCheck") {
@@ -76,26 +76,41 @@ const DEFAULT_RULES = {
   });
   
   async function resetDailyUsage() {
-    console.log("Reseteando datos de uso diario y pestañas visitadas...");
+    // console.log("Reseteando datos de uso diario y pestañas visitadas...");
     // Reset usageData to the default structure with minutes and activations
     await chrome.storage.local.set({ usageData: DEFAULT_USAGE, visitedTabs: DEFAULT_VISITED_TABS });
     // También podrías querer resetear los timers en memoria si es necesario
     siteTimers = {};
-    console.log("Datos de uso diario y pestañas visitadas reseteados.");
+    // console.log("Datos de uso diario y pestañas visitadas reseteados.");
   }
   
   // --- Seguimiento del Foco del Navegador ---
   chrome.windows.onFocusChanged.addListener((windowId) => {
     isBrowserFocused = windowId !== chrome.windows.WINDOW_ID_NONE;
-    console.log("Foco del navegador cambiado. Enfocado:", isBrowserFocused);
-    if (isBrowserFocused && lastKnownActiveTabId) {
-      chrome.tabs.get(lastKnownActiveTabId, (tab) => {
-        if (tab && tab.url) {
-          const host = getHostFromUrl(tab.url);
-          if (host) startTrackingHostTime(host, tab.id);
-        }
-      });
-    } else if (!isBrowserFocused) {
+    if (isBrowserFocused) {
+      // console.log(`Foco del navegador GANADO por la ventana ID: ${windowId}`);
+      if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+        chrome.windows.get(windowId, { populate: true }, (window) => {
+          if (window) {
+            // console.log(`Ventana enfocada ID: ${windowId}, Tipo: ${window.type}`);
+            // If the focused window has tabs and is not a devtools window
+            if (window.tabs && window.tabs.length > 0 && window.type !== 'devtools') {
+              const activeTab = window.tabs.find(tab => tab.active);
+              if (activeTab && activeTab.url) {
+                lastKnownActiveTabId = activeTab.id;
+                lastKnownWindowId = windowId;
+                const host = getHostFromUrl(activeTab.url);
+                if (host) {
+                  startTrackingHostTime(host, activeTab.id);
+                  recordActivation(host); // Record activation when window gains focus
+                }
+              }
+            }
+          }
+        });
+      }
+    } else {
+      // console.log("Foco del navegador PERDIDO.");
       // Si el navegador pierde el foco, pausar todos los timers activos
       for (const host in siteTimers) {
         if (siteTimers[host].intervalId) {
@@ -108,31 +123,25 @@ const DEFAULT_RULES = {
   
   // --- Seguimiento de Pestañas ---
   chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    console.log("Pestaña activada:", activeInfo.tabId);
+    // console.log(`Pestaña activada. Nueva pestaña ID: ${activeInfo.tabId}, Ventana ID: ${activeInfo.windowId}`);
     lastKnownActiveTabId = activeInfo.tabId;
     lastKnownWindowId = activeInfo.windowId;
 
-    // Registrar la URL de la pestaña activada y contar la activación
     chrome.tabs.get(activeInfo.tabId, (tab) => {
       if (tab && tab.url) {
-        recordVisitedTab(tab.url);
+        // console.log(`Pestaña activada URL: ${tab.url}`);
+        recordVisitedTab(tab.url); // Record visited tab here
         const host = getHostFromUrl(tab.url);
         if (host) {
-          recordActivation(host);
+          recordActivation(host); // Record activation here
         }
       }
     });
 
-    // Registrar la URL de la pestaña activada
-    chrome.tabs.get(activeInfo.tabId, (tab) => {
-      if (tab && tab.url) {
-        recordVisitedTab(tab.url);
-      }
-    });
-  
     // Pausar el timer de la pestaña anteriormente activa (si la hubo)
     for (const host in siteTimers) {
       if (siteTimers[host].activeTabId !== activeInfo.tabId && siteTimers[host].intervalId) {
+        // console.log(`Pestaña ID ${siteTimers[host].activeTabId} para host ${host} PERDIÓ el foco (otra pestaña activada).`);
         pauseTrackingHostTime(host, Date.now());
       }
     }
@@ -152,7 +161,7 @@ const DEFAULT_RULES = {
   chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     // Interesa 'complete' para asegurar que la URL es la final
     if (changeInfo.status === 'complete' && tab.url) {
-      console.log("Pestaña actualizada:", tabId, tab.url);
+      // console.log("Pestaña actualizada:", tabId, tab.url);
       // Registrar la URL de la pestaña actualizada si está activa
       if (tab.active) {
         recordVisitedTab(tab.url);
@@ -181,13 +190,13 @@ const DEFAULT_RULES = {
   });
   
   chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
-    console.log("Pestaña eliminada:", tabId);
+    // console.log("Pestaña eliminada:", tabId);
     // Si la pestaña eliminada era la que estaba siendo trackeada, detener su timer
     for (const host in siteTimers) {
       if (siteTimers[host].activeTabId === tabId) {
         pauseTrackingHostTime(host, Date.now()); // Guardar el tiempo acumulado
         delete siteTimers[host]; // Eliminar el timer
-        console.log(`Timer para ${host} en pestaña ${tabId} eliminado.`);
+        // console.log(`Timer para ${host} en pestaña ${tabId} eliminado.`);
       }
     }
     if (tabId === lastKnownActiveTabId) {
@@ -214,7 +223,7 @@ const DEFAULT_RULES = {
         return hostname; // Return hostname if it's just a single part
       }
     } catch (e) {
-      console.warn("URL inválida o no HTTP/S:", urlString, e);
+      // console.warn("URL inválida o no HTTP/S:", urlString, e);
     }
     return null;
   }
@@ -241,23 +250,23 @@ const DEFAULT_RULES = {
       if (currentVisitedTabs[today].length === 0 || currentVisitedTabs[today][currentVisitedTabs[today].length - 1] !== urlString) {
         currentVisitedTabs[today].push(urlString);
         await chrome.storage.local.set({ visitedTabs: currentVisitedTabs });
-        console.log(`Pestaña visitada registrada para hoy: ${urlString}`);
+        // console.log(`Pestaña visitada registrada para hoy: ${urlString}`);
       }
 
     } catch (e) {
-      console.warn("URL inválida al intentar registrar pestaña visitada:", urlString, e);
+      // console.warn("URL inválida al intentar registrar pestaña visitada:", urlString, e);
     }
   }
   
   async function startTrackingHostTime(host, tabId) {
-    console.log(`[startTrackingHostTime] host: ${host}, tabId: ${tabId}, isBrowserFocused: ${isBrowserFocused}`);
+    // console.log(`[startTrackingHostTime] host: ${host}, tabId: ${tabId}, isBrowserFocused: ${isBrowserFocused}`);
     if (!host || !isBrowserFocused) return;
   
     const { rules } = await chrome.storage.local.get("rules");
     const siteRule = (rules || DEFAULT_RULES)[host];
   
     if (siteRule && siteRule.unrestricted) {
-      console.log(`Sitio ${host} es irrestricto. No se trackea.`);
+      // console.log(`Sitio ${host} es irrestricto. No se trackea.`);
       // Asegurarse de que no haya un timer activo para este host
       if (siteTimers[host] && siteTimers[host].intervalId) {
           pauseTrackingHostTime(host, Date.now());
@@ -266,7 +275,7 @@ const DEFAULT_RULES = {
     }
   
     if (!siteTimers[host] || !siteTimers[host].intervalId) {
-      console.log(`Iniciando/Reanudando tracking para ${host} en pestaña ${tabId}`);
+      // console.log(`Iniciando/Reanudando tracking para ${host} en pestaña ${tabId}`);
       siteTimers[host] = {
         ...siteTimers[host], // Conservar tiempo acumulado si existe
         intervalId: "active", // Marcador de que está activo (no usamos setInterval aquí)
@@ -277,18 +286,18 @@ const DEFAULT_RULES = {
       // Si ya existe un timer y es para la misma pestaña, solo actualizar lastFocusTime
       siteTimers[host].activeTabId = tabId;
       siteTimers[host].lastFocusTime = Date.now();
-      console.log(`Actualizando lastFocusTime para ${host} en pestaña ${tabId}`);
+      // console.log(`Actualizando lastFocusTime para ${host} en pestaña ${tabId}`);
     }
   }
   
   async function pauseTrackingHostTime(host, pauseTime) {
-    console.log(`[pauseTrackingHostTime] host: ${host}, pauseTime: ${pauseTime}`);
+    // console.log(`[pauseTrackingHostTime] host: ${host}, pauseTime: ${pauseTime}`);
     if (siteTimers[host] && siteTimers[host].intervalId && siteTimers[host].lastFocusTime) {
       const elapsedSeconds = Math.round((pauseTime - siteTimers[host].lastFocusTime) / 1000);
       if (elapsedSeconds > 0) {
         await recordTimeSpent(host, elapsedSeconds);
       }
-      console.log(`Pausando tracking para ${host}. Tiempo en este foco: ${elapsedSeconds}s`);
+      // console.log(`Pausando tracking para ${host}. Tiempo en este foco: ${elapsedSeconds}s`);
       siteTimers[host].intervalId = null; // Marcar como inactivo
       siteTimers[host].lastFocusTime = null;
     }
@@ -301,27 +310,26 @@ const DEFAULT_RULES = {
     const currentUsage = usageData || DEFAULT_USAGE;
     const siteRule = (rules || DEFAULT_RULES)[host];
 
-    if (siteRule && siteRule.unrestricted) {
-      return; // No contar activaciones para sitios irrestrictos
-    }
-
     const today = new Date().toISOString().split('T')[0];
 
     if (!currentUsage[host]) {
       currentUsage[host] = {};
     }
     if (!currentUsage[host][today]) {
-      currentUsage[host][today] = { minutes: 0, activations: 0 };
+      currentUsage[host][today] = { minutes: 0, seconds: 0, activationTimestamps: [] };
+    } else if (!Array.isArray(currentUsage[host][today].activationTimestamps)) {
+      // Ensure activationTimestamps is an array if the field exists but is not an array (migration)
+      currentUsage[host][today].activationTimestamps = [];
     }
 
-    currentUsage[host][today].activations = (currentUsage[host][today].activations || 0) + 1;
+    currentUsage[host][today].activationTimestamps.push(Date.now());
 
     await chrome.storage.local.set({ usageData: currentUsage });
-    console.log(`Activación registrada para ${host}. Total hoy: ${currentUsage[host][today].activations} activaciones.`);
+    console.log(`Activación registrada para ${host} a las ${new Date().toLocaleTimeString()}. Total hoy: ${currentUsage[host][today].activationTimestamps.length} activaciones.`);
   }
 
   async function recordTimeSpent(host, seconds) {
-    console.log(`[recordTimeSpent] host: ${host}, seconds: ${seconds}`);
+    // console.log(`[recordTimeSpent] host: ${host}, seconds: ${seconds}`);
     if (!host || seconds <= 0) return;
   
     const { usageData, rules } = await chrome.storage.local.get(["usageData", "rules"]);
@@ -339,21 +347,25 @@ const DEFAULT_RULES = {
       currentUsage[host] = {};
     }
     if (!currentUsage[host][today]) {
-      currentUsage[host][today] = { minutes: 0, activations: 0 };
+      // Ensure activationTimestamps array exists if creating the entry here
+      currentUsage[host][today] = { minutes: 0, seconds: 0, activationTimestamps: [] };
     }
 
-    currentUsage[host][today].minutes = (currentUsage[host][today].minutes || 0) + Math.round(seconds / 60); // Guardar en minutos
-  
+    // Add seconds and handle rollovers to minutes
+    currentUsage[host][today].seconds = (currentUsage[host][today].seconds || 0) + seconds;
+    currentUsage[host][today].minutes = (currentUsage[host][today].minutes || 0) + Math.floor(currentUsage[host][today].seconds / 60);
+    currentUsage[host][today].seconds %= 60;
+
     await chrome.storage.local.set({ usageData: currentUsage });
-    console.log(`Registrados ${seconds}s (${Math.round(seconds/60)} min) para ${host}. Total hoy: ${currentUsage[host][today].minutes} min.`);
+    // console.log(`Registrados ${seconds}s para ${host}. Total hoy: ${currentUsage[host][today].minutes} min, ${currentUsage[host][today].seconds} s.`);
   }
   
   async function processActiveTabTime() {
-    console.log("Procesando tiempo de pestaña activa (periodicCheck)...");
+    // console.log("Procesando tiempo de pestaña activa (periodicCheck)...");
     let activeHostProcessed = false;
     for (const host in siteTimers) {
       if (siteTimers[host].intervalId && siteTimers[host].activeTabId === lastKnownActiveTabId && isBrowserFocused) {
-        console.log(`[processActiveTabTime] Processing active host: ${host}, tabId: ${siteTimers[host].activeTabId}`);
+        // console.log(`[processActiveTabTime] Processing active host: ${host}, tabId: ${siteTimers[host].activeTabId}`);
         const now = Date.now();
         const elapsedSeconds = Math.round((now - siteTimers[host].lastFocusTime) / 1000);
         if (elapsedSeconds > 0) {
@@ -385,7 +397,7 @@ const DEFAULT_RULES = {
     const siteUsage = (usageData || DEFAULT_USAGE)[host] || {};
   
     if (!siteRule || siteRule.unrestricted) {
-      console.log(`Sitio ${host} sin reglas o irrestricto. No se bloquea.`);
+      // console.log(`Sitio ${host} sin reglas o irrestricto. No se bloquea.`);
       return false; // No bloqueado
     }
   
@@ -396,7 +408,7 @@ const DEFAULT_RULES = {
     // 1. Comprobar horario
     if (siteRule.startTime && siteRule.endTime) {
       if (currentTimeStr < siteRule.startTime || currentTimeStr >= siteRule.endTime) {
-        console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por estar fuera de horario (${siteRule.startTime}-${siteRule.endTime}). Hora actual: ${currentTimeStr}`);
+        // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por estar fuera de horario (${siteRule.startTime}-${siteRule.endTime}). Hora actual: ${currentTimeStr}`);
         await blockTab(tabId, host, urlToBlock, `Fuera de horario permitido (${siteRule.startTime} - ${siteRule.endTime}).`);
         return true; // Bloqueado
       }
@@ -413,11 +425,11 @@ const DEFAULT_RULES = {
     const totalMinutesConsidered = usedTodayMinutes + currentSessionMinutes;
   
     if (siteRule.dailyLimitMinutes && totalMinutesConsidered >= siteRule.dailyLimitMinutes) {
-      console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por límite de tiempo diario excedido (${totalMinutesConsidered}min / ${siteRule.dailyLimitMinutes}min)`);
+      // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por límite de tiempo diario excedido (${totalMinutesConsidered}min / ${siteRule.dailyLimitMinutes}min)`);
       await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario (${siteRule.dailyLimitMinutes} min) alcanzado.`);
       return true; // Bloqueado
     }
-    console.log(`Sitio ${host} verificado. No requiere bloqueo. Uso hoy: ${totalMinutesConsidered}min. Límite: ${siteRule.dailyLimitMinutes}min. Horario: ${siteRule.startTime}-${siteRule.endTime}`);
+    // console.log(`Sitio ${host} verificado. No requiere bloqueo. Uso hoy: ${totalMinutesConsidered}min. Límite: ${siteRule.dailyLimitMinutes}min. Horario: ${siteRule.startTime}-${siteRule.endTime}`);
     return false; // No bloqueado
   }
   
@@ -428,16 +440,16 @@ const DEFAULT_RULES = {
     const blockedPageUrl = chrome.runtime.getURL(`blocked.html?url=${encodeURIComponent(originalUrl)}&reason=${encodeURIComponent(reason)}&host=${encodeURIComponent(host)}`);
     try {
       await chrome.tabs.update(tabId, { url: blockedPageUrl });
-      console.log(`Pestaña ${tabId} redirigida a página de bloqueo para ${host}.`);
+      // console.log(`Pestaña ${tabId} redirigida a página de bloqueo para ${host}.`);
     } catch (error) {
-      console.error(`Error al actualizar la pestaña ${tabId} a la página de bloqueo:`, error, `URL original: ${originalUrl}`);
+      // console.error(`Error al actualizar la pestaña ${tabId} a la página de bloqueo:`, error, `URL original: ${originalUrl}`);
       // Esto puede pasar si la pestaña fue cerrada o ya no es accesible
     }
   }
   
   // Función para verificar todas las pestañas abiertas (útil después de cambios de reglas o al inicio)
   async function checkAllTabsForBlocking() {
-    console.log("Verificando todas las pestañas para bloqueo...");
+    // console.log("Verificando todas las pestañas para bloqueo...");
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
       if (tab.url) {
@@ -456,7 +468,7 @@ const DEFAULT_RULES = {
   // Escuchar cambios en las reglas desde la página de opciones
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "rulesChanged") {
-      console.log("Reglas cambiadas, re-evaluando pestañas abiertas.");
+      // console.log("Reglas cambiadas, re-evaluando pestañas abiertas.");
       checkAllTabsForBlocking();
       // También es buena idea recargar las reglas en los timers activos
       // o simplemente resetearlos para que se adapten a las nuevas reglas.
@@ -466,4 +478,4 @@ const DEFAULT_RULES = {
     return true; // Indica que la respuesta será asíncrona
   });
   
-  console.log("Service Worker de Control de Navegación iniciado.");
+  // console.log("Service Worker de Control de Navegación iniciado.");
