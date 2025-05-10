@@ -432,13 +432,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sortedHosts.length === 0) {
             tableHTML += '<tr><td colspan="' + (sortedTimeBuckets.length + 1) + '" class="px-6 py-4 text-center text-sm text-gray-500">No hay datos de activación para mostrar en este período.</td></tr>';
         } else {
+            const today = new Date().toISOString().split('T')[0];
+
             for (const host of sortedHosts) {
+                const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, seconds: 0, activationTimestamps: [] };
                 tableHTML += '<tr>';
                 tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${host}</td>`;
                 for (const bucketTime of sortedTimeBuckets) {
                     const count = aggregatedData[host][bucketTime] || 0;
                     tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${count}</td>`;
                 }
+                // Add Tiempo Hoy column
+                const secondsDisplay = (usageToday.seconds !== undefined && usageToday.seconds > 0) ? `, ${usageToday.seconds} s` : '';
+                tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${usageToday.minutes} min${secondsDisplay}</td>`;
+                // Add Action column with button
+                tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button class="create-rule-button text-blue-600 hover:text-blue-900" data-host="${host}">Crear Regla</button>
+                              </td>`;
                 tableHTML += '</tr>';
             }
         }
@@ -446,6 +456,14 @@ document.addEventListener('DOMContentLoaded', () => {
         tableHTML += '</tbody></table>';
 
         activationsTableContainer.innerHTML = tableHTML;
+
+        // Add event listeners to the new buttons
+        activationsTableContainer.querySelectorAll('.create-rule-button').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const host = event.target.dataset.host;
+                populateFormForRule(host, { timeRanges: [] }); // Populate form with host and empty time ranges
+            });
+        });
     }
 
     // Helper function to get host from URL (replicated from background.js for now)
