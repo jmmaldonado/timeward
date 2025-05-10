@@ -101,7 +101,6 @@ const DEFAULT_RULES = {
                 lastKnownWindowId = windowId;
                 const host = getHostFromUrl(activeTab.url);
                 if (host) {
-                  console.log(`[onFocusChanged] Checking and potentially blocking tab ID: ${activeTab.id}, Host: ${host}, URL: ${activeTab.url}`);
                   checkAndBlockIfNeeded(activeTab.id, host, activeTab.url); // No await needed here as it's not critical path for focus change
                   startTrackingHostTime(host, activeTab.id);
                   recordActivation(host); // Record activation when window gains focus
@@ -153,7 +152,10 @@ const DEFAULT_RULES = {
       if (tab && tab.url && isBrowserFocused) {
         const host = getHostFromUrl(tab.url);
         if (host) {
-          console.log(`[onActivated] Checking and potentially blocking tab ID: ${tab.id}, Host: ${host}, URL: ${tab.url}`);
+          const { rules } = await chrome.storage.local.get("rules");
+          const siteRule = (rules || DEFAULT_RULES)[host];
+          const timeRangesDetails = siteRule && siteRule.timeRanges ? `, Time Ranges: ${JSON.stringify(siteRule.timeRanges)}` : '';
+          console.log(`[onActivated] Checking and potentially blocking tab ID: ${tab.id}, Host: ${host}, URL: ${tab.url}${timeRangesDetails}`);
           const blocked = await checkAndBlockIfNeeded(tab.id, host, tab.url);
           if (!blocked) {
             startTrackingHostTime(host, tab.id);
@@ -345,7 +347,7 @@ const DEFAULT_RULES = {
   
     // Solo registrar si hay una regla (incluso si no es de límite, para estadísticas) o si no es irrestricto
     if (siteRule && siteRule.unrestricted) {
-        return; // No registrar tiempo para sitios irrestrictos
+        return; // No registrar tiempo para sitios irrestritos
     }
   
     const today = new Date().toISOString().split('T')[0];
@@ -411,16 +413,26 @@ const DEFAULT_RULES = {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const currentTimeStr = now.toTimeString().substring(0, 5); // "HH:MM"
-  
+
     // 1. Comprobar horario
-    if (siteRule.startTime && siteRule.endTime) {
-      if (currentTimeStr < siteRule.startTime || currentTimeStr >= siteRule.endTime) {
-        // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por estar fuera de horario (${siteRule.startTime}-${siteRule.endTime}). Hora actual: ${currentTimeStr}`);
-        await blockTab(tabId, host, urlToBlock, `Fuera de horario permitido (${siteRule.startTime} - ${siteRule.endTime}).`);
-        return true; // Bloqueado
-      }
+    if (siteRule.timeRanges && Array.isArray(siteRule.timeRanges) && siteRule.timeRanges.length > 0) {
+        let isWithinAllowedTime = false;
+        console.log(siteRule)
+        for (const range of siteRule.timeRanges) {
+            if (range.startTime && range.endTime) {
+                if (currentTimeStr >= range.startTime && currentTimeStr < range.endTime) {
+                    isWithinAllowedTime = true;
+                    break; // Found a valid time range, no need to check further
+                }
+            }
+        }
+        if (!isWithinAllowedTime) {
+            // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por estar fuera de los horarios permitidos.`);
+            await blockTab(tabId, host, urlToBlock, `Fuera de los horarios permitidos.`);
+            return true; // Bloqueado
+        }
     }
-  
+
     // 2. Comprobar límite de tiempo diario
     const usedToday = (siteUsage[todayStr] ? siteUsage[todayStr] : { minutes: 0, seconds: 0, activationTimestamps: [] });
     let currentSessionSeconds = 0;
@@ -433,6 +445,8 @@ const DEFAULT_RULES = {
     // Add current session time to the usage data for the check
     let totalSecondsConsidered = (usedToday.minutes * 60) + usedToday.seconds + currentSessionSeconds;
     let totalMinutesConsidered = Math.floor(totalSecondsConsidered / 60);
+
+    console.log(`[checkAndBlockIfNeeded] Host: ${host}, Time Ranges: ${JSON.stringify(siteRule.timeRanges)}, Daily Limit: ${siteRule.dailyLimitMinutes} min, Used Today (considered): ${totalMinutesConsidered} min`);
 
     if (siteRule.dailyLimitMinutes && totalMinutesConsidered >= siteRule.dailyLimitMinutes) {
       // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por límite de tiempo diario excedido (${totalMinutesConsidered}min / ${siteRule.dailyLimitMinutes}min)`);

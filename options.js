@@ -3,8 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const hostnameInput = document.getElementById('hostname');
     const unrestrictedCheckbox = document.getElementById('unrestricted');
     const dailyLimitInput = document.getElementById('dailyLimit');
-    const startTimeInput = document.getElementById('startTime');
-    const endTimeInput = document.getElementById('endTime');
+    const timeRangesContainer = document.getElementById('timeRangesContainer');
+    const addTimeRangeButton = document.getElementById('addTimeRangeButton');
     const saveRuleButton = document.getElementById('saveRule');
     const rulesListDiv = document.getElementById('rulesList');
     const usageStatsDiv = document.getElementById('usageStats');
@@ -15,12 +15,15 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRules();
     loadUsageStats();
 
+    addTimeRangeButton.addEventListener('click', () => {
+        addTimeRangeInput();
+    });
+
     unrestrictedCheckbox.addEventListener('change', () => {
         limitsSection.style.display = unrestrictedCheckbox.checked ? 'none' : 'block';
         if (unrestrictedCheckbox.checked) {
             dailyLimitInput.value = '';
-            startTimeInput.value = '';
-            endTimeInput.value = '';
+            timeRangesContainer.innerHTML = ''; // Clear time ranges
         }
     });
 
@@ -39,8 +42,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isUnrestricted = unrestrictedCheckbox.checked;
         const dailyLimit = parseInt(dailyLimitInput.value, 10);
-        const startTime = startTimeInput.value;
-        const endTime = endTimeInput.value;
+        const timeRanges = [];
+        timeRangesContainer.querySelectorAll('.time-range-item').forEach(item => {
+            const startTime = item.querySelector('.start-time').value;
+            const endTime = item.querySelector('.end-time').value;
+            if (startTime && endTime) {
+                timeRanges.push({ startTime, endTime });
+            }
+        });
+
 
         const { rules } = await chrome.storage.local.get('rules');
         const currentRules = rules || {};
@@ -52,14 +62,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 showStatus("El límite diario debe ser un número positivo.", true);
                 return;
             }
-            if (startTime && endTime && startTime >= endTime) {
-                showStatus("La hora de inicio debe ser anterior a la hora de fin.", true);
-                return;
+            // Basic validation for time ranges
+            for (const range of timeRanges) {
+                if (!range.startTime || !range.endTime) {
+                     showStatus("Todos los rangos de horario deben tener hora de inicio y fin.", true);
+                     return;
+                }
+                if (range.startTime >= range.endTime) {
+                    showStatus("La hora de inicio debe ser anterior a la hora de fin en todos los rangos.", true);
+                    return;
+                }
             }
+
             currentRules[hostname] = {
-                dailyLimitMinutes: dailyLimit || null, // Guardar null si está vacío
-                startTime: startTime || null,
-                endTime: endTime || null
+                dailyLimitMinutes: dailyLimit || null,
+                timeRanges: timeRanges.length > 0 ? timeRanges : null // Save array or null
             };
         }
 
@@ -78,12 +95,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    function addTimeRangeInput(startTime = '', endTime = '') {
+        const timeRangeDiv = document.createElement('div');
+        timeRangeDiv.classList.add('time-range-item', 'flex', 'items-center', 'space-x-2');
+        timeRangeDiv.innerHTML = `
+            <input type="time" class="start-time px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            <span>hasta</span>
+            <input type="time" class="end-time px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            <button type="button" class="remove-time-range px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm">X</button>
+        `;
+        timeRangeDiv.querySelector('.start-time').value = startTime;
+        timeRangeDiv.querySelector('.end-time').value = endTime;
+        timeRangeDiv.querySelector('.remove-time-range').addEventListener('click', () => {
+            timeRangeDiv.remove();
+        });
+        timeRangesContainer.appendChild(timeRangeDiv);
+    }
+
     function clearInputFields() {
         hostnameInput.value = '';
         unrestrictedCheckbox.checked = false;
         dailyLimitInput.value = '';
-        startTimeInput.value = '';
-        endTimeInput.value = '';
+        timeRangesContainer.innerHTML = ''; // Clear time ranges
         limitsSection.style.display = 'block';
     }
 
@@ -113,7 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 details += `<p class="text-sm text-gray-600">Acceso ilimitado.</p>`;
             } else {
                 details += `<p class="text-sm text-gray-600">Límite diario: ${rule.dailyLimitMinutes !== null && rule.dailyLimitMinutes !== undefined ? rule.dailyLimitMinutes + ' minutos' : 'No establecido'}</p>`;
-                details += `<p class="text-sm text-gray-600">Horario: ${rule.startTime || 'N/A'} - ${rule.endTime || 'N/A'}</p>`;
+                if (rule.timeRanges && rule.timeRanges.length > 0) {
+                    details += `<p class="text-sm text-gray-600">Horarios: ${rule.timeRanges.map(range => `${range.startTime || 'N/A'} - ${range.endTime || 'N/A'}`).join(', ')}</p>`;
+                } else {
+                    details += `<p class="text-sm text-gray-600">Horarios: No establecidos</p>`;
+                }
             }
             details += `</div>`;
 
@@ -163,14 +200,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function populateFormForRule(host, rule) {
         hostnameInput.value = host;
         unrestrictedCheckbox.checked = !!rule.unrestricted;
+        timeRangesContainer.innerHTML = ''; // Clear existing time ranges
+
         if (rule.unrestricted) {
             dailyLimitInput.value = '';
-            startTimeInput.value = '';
-            endTimeInput.value = '';
         } else {
             dailyLimitInput.value = rule.dailyLimitMinutes !== null && rule.dailyLimitMinutes !== undefined ? rule.dailyLimitMinutes : '';
-            startTimeInput.value = rule.startTime || '';
-            endTimeInput.value = rule.endTime || '';
+            if (rule.timeRanges && Array.isArray(rule.timeRanges) && rule.timeRanges.length > 0) {
+                rule.timeRanges.forEach(range => {
+                    addTimeRangeInput(range.startTime, range.endTime);
+                });
+            } else {
+                 // Add one empty time range input if none exist
+                 addTimeRangeInput();
+            }
         }
         limitsSection.style.display = unrestrictedCheckbox.checked ? 'none' : 'block';
         hostnameInput.focus(); // Mover el foco al inicio del formulario
@@ -221,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createRuleButton.textContent = 'Crear Regla';
             createRuleButton.classList.add('ml-4', 'px-3', 'py-1', 'bg-blue-500', 'text-white', 'rounded-md', 'hover:bg-blue-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-offset-2', 'text-sm', 'flex-shrink-0');
             createRuleButton.addEventListener('click', () => {
-                populateFormForRule(host, {}); // Populate form with host and empty rule
+                populateFormForRule(host, { timeRanges: [] }); // Populate form with host and empty time ranges
             });
             p.appendChild(createRuleButton);
 
