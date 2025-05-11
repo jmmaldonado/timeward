@@ -7,9 +7,7 @@ const DEFAULT_RULES = {
     // "lichess.org": { dailyLimitMinutes: 60, startTime: "08:00", endTime: "20:00" }
   };
   
-  const DEFAULT_USAGE = {
-    // Ejemplo: "youtube.com": { "2025-05-10": { minutes: 0, seconds: 0, activationTimestamps: [] } } // minutos, segundos y array de timestamps de activación
-  };
+  const DEFAULT_USAGE = {}; // Usage data will be stored under date-specific keys (usageYYYY-MM-DD)
   
   const DEFAULT_VISITED_TABS = {
     // Ejemplo: "2025-05-10": ["url1", "url2"]
@@ -77,9 +75,20 @@ const DEFAULT_RULES = {
   
   async function resetDailyUsage() {
     // console.log("Reseteando datos de uso diario y pestañas visitadas...");
-    // Reset usageData to the default structure with minutes and activations
-    await chrome.storage.local.set({ usageData: DEFAULT_USAGE, visitedTabs: DEFAULT_VISITED_TABS });
-    // También podrías querer resetear los timers en memoria si es necesario
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = `usage${yesterday.toISOString().split('T')[0]}`;
+
+    // Remove yesterday's usage data and reset visitedTabs
+    await chrome.storage.local.remove([yesterdayKey, 'visitedTabs']);
+
+    // Also clear any usage data for today that might exist from a previous run/crash
+    const today = new Date().toISOString().split('T')[0];
+    const todayKey = `usage${today}`;
+     await chrome.storage.local.remove(todayKey);
+
+
+    // Reset timers in memory
     siteTimers = {};
     // console.log("Datos de uso diario y pestañas visitadas reseteados.");
   }
@@ -315,34 +324,33 @@ const DEFAULT_RULES = {
   async function recordActivation(host) {
     if (!host) return;
 
-    const { usageData, rules } = await chrome.storage.local.get(["usageData", "rules"]);
-    const currentUsage = usageData || DEFAULT_USAGE;
-    const siteRule = (rules || DEFAULT_RULES)[host];
-
     const today = new Date().toISOString().split('T')[0];
+    const usageKeyToday = `usage${today}`;
 
-    if (!currentUsage[host]) {
-      currentUsage[host] = {};
-    }
-    if (!currentUsage[host][today]) {
-      currentUsage[host][today] = { minutes: 0, seconds: 0, activationTimestamps: [] };
-    } else if (!Array.isArray(currentUsage[host][today].activationTimestamps)) {
+    // Fetch today's usage data
+    const usageTodayData = await chrome.storage.local.get(usageKeyToday);
+    const currentUsageToday = usageTodayData[usageKeyToday] || {};
+
+    // Ensure the hostname entry exists for today
+    if (!currentUsageToday[host]) {
+      currentUsageToday[host] = { minutes: 0, seconds: 0, activationTimestamps: [] };
+    } else if (!Array.isArray(currentUsageToday[host].activationTimestamps)) {
       // Ensure activationTimestamps is an array if the field exists but is not an array (migration)
-      currentUsage[host][today].activationTimestamps = [];
+      currentUsageToday[host].activationTimestamps = [];
     }
 
-    currentUsage[host][today].activationTimestamps.push(Date.now());
+    currentUsageToday[host].activationTimestamps.push(Date.now());
 
-    await chrome.storage.local.set({ usageData: currentUsage });
-    console.log(`Activación registrada para ${host} a las ${new Date().toLocaleTimeString()}. Total hoy: ${currentUsage[host][today].activationTimestamps.length} activaciones.`);
+    // Save the updated object back to the date-specific key
+    await chrome.storage.local.set({ [usageKeyToday]: currentUsageToday });
+    console.log(`Activación registrada para ${host} a las ${new Date().toLocaleTimeString()}. Total hoy: ${currentUsageToday[host].activationTimestamps.length} activaciones.`);
   }
 
   async function recordTimeSpent(host, seconds) {
     // console.log(`[recordTimeSpent] host: ${host}, seconds: ${seconds}`);
     if (!host || seconds <= 0) return;
   
-    const { usageData, rules } = await chrome.storage.local.get(["usageData", "rules"]);
-    const currentUsage = usageData || DEFAULT_USAGE;
+    const { rules } = await chrome.storage.local.get("rules");
     const siteRule = (rules || DEFAULT_RULES)[host];
   
     // Solo registrar si hay una regla (incluso si no es de límite, para estadísticas) o si no es irrestricto
@@ -351,22 +359,25 @@ const DEFAULT_RULES = {
     }
   
     const today = new Date().toISOString().split('T')[0];
+    const usageKeyToday = `usage${today}`;
+
+    // Fetch today's usage data
+    const usageTodayData = await chrome.storage.local.get(usageKeyToday);
+    const currentUsageToday = usageTodayData[usageKeyToday] || {};
   
-    if (!currentUsage[host]) {
-      currentUsage[host] = {};
-    }
-    if (!currentUsage[host][today]) {
-      // Ensure activationTimestamps array exists if creating the entry here
-      currentUsage[host][today] = { minutes: 0, seconds: 0, activationTimestamps: [] };
+    // Ensure the hostname entry exists for today
+    if (!currentUsageToday[host]) {
+      currentUsageToday[host] = { minutes: 0, seconds: 0, activationTimestamps: [] };
     }
 
     // Add seconds and handle rollovers to minutes
-    currentUsage[host][today].seconds = (currentUsage[host][today].seconds || 0) + seconds;
-    currentUsage[host][today].minutes = (currentUsage[host][today].minutes || 0) + Math.floor(currentUsage[host][today].seconds / 60);
-    currentUsage[host][today].seconds %= 60;
+    currentUsageToday[host].seconds = (currentUsageToday[host].seconds || 0) + seconds;
+    currentUsageToday[host].minutes = (currentUsageToday[host].minutes || 0) + Math.floor(currentUsageToday[host].seconds / 60);
+    currentUsageToday[host].seconds %= 60;
 
-    await chrome.storage.local.set({ usageData: currentUsage });
-    // console.log(`Registrados ${seconds}s para ${host}. Total hoy: ${currentUsage[host][today].minutes} min, ${currentUsage[host][today].seconds} s.`);
+    // Save the updated object back to the date-specific key
+    await chrome.storage.local.set({ [usageKeyToday]: currentUsageToday });
+    // console.log(`Registrados ${seconds}s para ${host}. Total hoy: ${currentUsageToday[host].minutes} min, ${currentUsageToday[host].seconds} s.`);
   }
   
   async function processActiveTabTime() {
@@ -400,25 +411,36 @@ const DEFAULT_RULES = {
   
   // --- Lógica de Bloqueo ---
   async function checkAndBlockIfNeeded(tabId, host, urlToBlock) {
-    if (!host) return;
-    const { rules, usageData } = await chrome.storage.local.get(["rules", "usageData"]);
-    const siteRule = (rules || DEFAULT_RULES)[host];
-    const siteUsage = (usageData || DEFAULT_USAGE)[host] || {};
-  
-    if (!siteRule || siteRule.unrestricted) {
+    if (!host) return false; // Cannot block without a host
+
+    const { rules } = await chrome.storage.local.get("rules");
+    const siteRules = (rules || DEFAULT_RULES)[host];
+
+    if (!siteRules || siteRules.unrestricted) {
       // console.log(`Sitio ${host} sin reglas o irrestricto. No se bloquea.`);
-      return false; // No bloqueado
+      return false; // Not blocked
     }
-  
+
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const currentTimeStr = now.toTimeString().substring(0, 5); // "HH:MM"
+    const todayDayOfWeek = now.getDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
+    const isWeekend = todayDayOfWeek === 0 || todayDayOfWeek === 6;
+    const ruleTypeToday = isWeekend ? 'weekend' : 'weekday';
+
+    const ruleToday = siteRules[ruleTypeToday];
+
+    // If there's no specific rule for today (weekday/weekend), don't block based on limits/time ranges
+    if (!ruleToday) {
+        // console.log(`Sitio ${host} no tiene regla configurada para ${ruleTypeToday}. No se bloquea.`);
+        return false;
+    }
 
     // 1. Comprobar horario
-    if (siteRule.timeRanges && Array.isArray(siteRule.timeRanges) && siteRule.timeRanges.length > 0) {
+    if (ruleToday.timeRanges && Array.isArray(ruleToday.timeRanges) && ruleToday.timeRanges.length > 0) {
         let isWithinAllowedTime = false;
-        console.log(siteRule)
-        for (const range of siteRule.timeRanges) {
+        // console.log(`Checking time ranges for ${host} (${ruleTypeToday}):`, ruleToday.timeRanges);
+        for (const range of ruleToday.timeRanges) {
             if (range.startTime && range.endTime) {
                 if (currentTimeStr >= range.startTime && currentTimeStr < range.endTime) {
                     isWithinAllowedTime = true;
@@ -427,14 +449,18 @@ const DEFAULT_RULES = {
             }
         }
         if (!isWithinAllowedTime) {
-            // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por estar fuera de los horarios permitidos.`);
-            await blockTab(tabId, host, urlToBlock, `Fuera de los horarios permitidos.`);
-            return true; // Bloqueado
+            // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por estar fuera de los horarios permitidos para ${ruleTypeToday}.`);
+            await blockTab(tabId, host, urlToBlock, `Fuera de los horarios permitidos para ${ruleTypeToday}.`);
+            return true; // Blocked
         }
     }
 
     // 2. Comprobar límite de tiempo diario
-    const usedToday = (siteUsage[todayStr] ? siteUsage[todayStr] : { minutes: 0, seconds: 0, activationTimestamps: [] });
+    const usageKeyToday = `usage${todayStr}`;
+    const usageTodayData = await chrome.storage.local.get(usageKeyToday);
+    const currentUsageToday = usageTodayData[usageKeyToday] || {};
+    const usedToday = currentUsageToday[host] || { minutes: 0, seconds: 0, activationTimestamps: [] };
+
     let currentSessionSeconds = 0;
 
     // Considerar el tiempo de la sesión activa actual que aún no se ha guardado
@@ -446,15 +472,15 @@ const DEFAULT_RULES = {
     let totalSecondsConsidered = (usedToday.minutes * 60) + usedToday.seconds + currentSessionSeconds;
     let totalMinutesConsidered = Math.floor(totalSecondsConsidered / 60);
 
-    console.log(`[checkAndBlockIfNeeded] Host: ${host}, Time Ranges: ${JSON.stringify(siteRule.timeRanges)}, Daily Limit: ${siteRule.dailyLimitMinutes} min, Used Today (considered): ${totalMinutesConsidered} min`);
+    // console.log(`[checkAndBlockIfNeeded] Host: ${host} (${ruleTypeToday}), Daily Limit: ${ruleToday.dailyLimitMinutes} min, Used Today (considered): ${totalMinutesConsidered} min`);
 
-    if (siteRule.dailyLimitMinutes && totalMinutesConsidered >= siteRule.dailyLimitMinutes) {
-      // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por límite de tiempo diario excedido (${totalMinutesConsidered}min / ${siteRule.dailyLimitMinutes}min)`);
-      await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario (${siteRule.dailyLimitMinutes} min) alcanzado.`);
-      return true; // Bloqueado
+    if (ruleToday.dailyLimitMinutes !== null && ruleToday.dailyLimitMinutes !== undefined && totalMinutesConsidered >= ruleToday.dailyLimitMinutes) {
+      // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por límite de tiempo diario excedido (${totalMinutesConsidered}min / ${ruleToday.dailyLimitMinutes}min) para ${ruleTypeToday}.`);
+      await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario (${ruleToday.dailyLimitMinutes} min) alcanzado para ${ruleTypeToday}.`);
+      return true; // Blocked
     }
-    // console.log(`Sitio ${host} verificado. No requiere bloqueo. Uso hoy: ${totalMinutesConsidered}min. Límite: ${siteRule.dailyLimitMinutes}min. Horario: ${siteRule.startTime}-${siteRule.endTime}`);
-    return false; // No bloqueado
+    // console.log(`Sitio ${host} verificado. No requiere bloqueo. Uso hoy: ${totalMinutesConsidered}min. Límite (${ruleTypeToday}): ${ruleToday.dailyLimitMinutes}min. Horario (${ruleTypeToday}): ${JSON.stringify(ruleToday.timeRanges)}`);
+    return false; // Not blocked
   }
 
   async function blockTab(tabId, host, originalUrl, reason) {

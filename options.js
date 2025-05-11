@@ -7,13 +7,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const addTimeRangeButton = document.getElementById('addTimeRangeButton');
     const saveRuleButton = document.getElementById('saveRule');
     const rulesListDiv = document.getElementById('rulesList');
-    const usageStatsDiv = document.getElementById('usageStats');
+    const usageStatsDiv = document.getElementById('usageStats'); // This will be null now, but kept for existing references if any
     const statusP = document.getElementById('status');
     const limitsSection = document.getElementById('limits-section');
+    const rulesTableBody = document.getElementById('rulesTableBody'); // Get rulesTableBody here
+    const activationsTableContainer = document.getElementById('activationsTableContainer'); // Get activationsTableContainer here
+    const activationDateInput = document.getElementById('activationDate'); // Get activationDateInput here
+    const timeResolutionSelect = document.getElementById('timeResolution'); // Get timeResolutionSelect here
 
-    // Cargar reglas y estadísticas al iniciar
+
+    // Cargar reglas y estadísticas al iniciar (order changed)
     loadRules();
-    loadUsageStats();
+    renderActivationsTable(); // Call renderActivationsTable before loadUsageStats
+
 
     addTimeRangeButton.addEventListener('click', () => {
         addTimeRangeInput();
@@ -51,13 +57,30 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        const ruleType = document.querySelector('input[name="ruleType"]:checked').value;
 
         const { rules } = await chrome.storage.local.get('rules');
-        const currentRules = rules || {};
+        let currentRules = rules || {};
+
+        // Ensure the hostname entry exists
+        if (!currentRules[hostname]) {
+            currentRules[hostname] = {};
+        }
 
         if (isUnrestricted) {
+            // If unrestricted, it applies to both weekday and weekend,
+            // so we can simplify the structure or set unrestricted flag at hostname level
+            // Let's set unrestricted at the hostname level for simplicity
             currentRules[hostname] = { unrestricted: true };
         } else {
+            // If not unrestricted, ensure the weekday/weekend structure exists
+            if (!currentRules[hostname].weekday) {
+                currentRules[hostname].weekday = {};
+            }
+            if (!currentRules[hostname].weekend) {
+                currentRules[hostname].weekend = {};
+            }
+
             if (isNaN(dailyLimit) || dailyLimit < 0) {
                 showStatus("El límite diario debe ser un número positivo.", true);
                 return;
@@ -74,14 +97,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            currentRules[hostname] = {
+            // Save the rule under the selected rule type (weekday or weekend)
+            currentRules[hostname][ruleType] = {
                 dailyLimitMinutes: dailyLimit || null,
                 timeRanges: timeRanges.length > 0 ? timeRanges : null // Save array or null
             };
+
+            // If the rule was previously unrestricted, remove the unrestricted flag
+            if (currentRules[hostname].unrestricted) {
+                delete currentRules[hostname].unrestricted;
+            }
         }
 
+        console.log("Saving rules:", currentRules); // Add logging here
         await chrome.storage.local.set({ rules: currentRules });
-        showStatus(`Regla para '${hostname}' guardada.`, false);
+        showStatus(`Regla para '${hostname}' (${ruleType}) guardada.`, false);
         loadRules(); // Recargar la lista
         clearInputFields();
 
@@ -101,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         timeRangeDiv.innerHTML = `
             <input type="time" class="start-time px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
             <span>hasta</span>
-            <input type="time" class="end-time px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            <input type="time" class="end-time px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm">
             <button type="button" class="remove-time-range px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm">X</button>
         `;
         timeRangeDiv.querySelector('.start-time').value = startTime;
@@ -118,60 +148,113 @@ document.addEventListener('DOMContentLoaded', () => {
         dailyLimitInput.value = '';
         timeRangesContainer.innerHTML = ''; // Clear time ranges
         limitsSection.style.display = 'block';
+        // Reset rule type radio button to weekday
+        document.getElementById('ruleTypeWeekday').checked = true;
     }
 
     async function loadRules() {
-        const { rules, usageData } = await chrome.storage.local.get(['rules', 'usageData']);
+        const { rules } = await chrome.storage.local.get('rules');
         const currentRules = rules || {};
-        const currentUsage = usageData || {};
-        rulesListDiv.innerHTML = ''; // Limpiar lista actual
-
-        if (Object.keys(currentRules).length === 0) {
-            rulesListDiv.innerHTML = '<p class="text-gray-600">No hay reglas configuradas.</p>';
+        
+        if (!rulesListDiv) {
+             console.error("Element with ID 'rulesList' not found at loadRules start.");
+             return;
+        }
+        if (!rulesTableBody) {
+            console.error("Element with ID 'rulesTableBody' not found at loadRules start.");
+            // If rulesTableBody is missing, clear the parent div and return
+            rulesListDiv.innerHTML = '<p class="text-red-600">Error: Tabla de reglas no encontrada.</p>';
             return;
         }
 
+        rulesTableBody.innerHTML = ''; // Clear table body
+
+        if (Object.keys(currentRules).length === 0) {
+            // If no rules, display a message in the rulesListDiv (the parent)
+            rulesListDiv.innerHTML = '<p class="text-gray-600">No hay reglas configuradas.</p>';
+            return;
+        } else {
+             // If there are rules, ensure the message is cleared if it was previously shown
+             if (rulesListDiv.innerHTML.includes('No hay reglas configuradas.') || rulesListDiv.innerHTML.includes('Error: Tabla de reglas no encontrada.')) {
+                 rulesListDiv.innerHTML = '';
+             }
+        }
+
+
+        // Fetch usage data for today to display alongside rules
         const today = new Date().toISOString().split('T')[0];
+        const usageKeyToday = `usage${today}`;
+        const usageTodayData = await chrome.storage.local.get(usageKeyToday);
+        const currentUsageToday = usageTodayData[usageKeyToday] || {};
+
 
         for (const host in currentRules) {
             const rule = currentRules[host];
-            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, seconds: 0, activationTimestamps: [] };
+            const usageForHostToday = currentUsageToday[host] || { minutes: 0, seconds: 0, activationTimestamps: [] };
 
-            const ruleDiv = document.createElement('div');
-            ruleDiv.classList.add('rule-item', 'flex', 'items-center', 'justify-between', 'p-4', 'border', 'border-gray-200', 'rounded-md', 'bg-white', 'shadow-sm');
+            const row = document.createElement('tr');
+            row.classList.add('rule-item', 'hover:bg-gray-50');
 
-            let details = `<div class="flex-1">
-                                <h3 class="text-lg font-semibold text-gray-800">${host}</h3>`;
+            // Site Column
+            const siteCell = document.createElement('td');
+            siteCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'font-medium', 'text-gray-900');
+            siteCell.textContent = host;
+            row.appendChild(siteCell);
+
+            // Daily Limit Column (Combined for Weekday/Weekend)
+            const limitCell = document.createElement('td');
+            limitCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'text-gray-500');
             if (rule.unrestricted) {
-                details += `<p class="text-sm text-gray-600">Acceso ilimitado.</p>`;
+                limitCell.textContent = 'Ilimitado';
             } else {
-                details += `<p class="text-sm text-gray-600">Límite diario: ${rule.dailyLimitMinutes !== null && rule.dailyLimitMinutes !== undefined ? rule.dailyLimitMinutes + ' minutos' : 'No establecido'}</p>`;
-                if (rule.timeRanges && rule.timeRanges.length > 0) {
-                    details += `<p class="text-sm text-gray-600">Horarios: ${rule.timeRanges.map(range => `${range.startTime || 'N/A'} - ${range.endTime || 'N/A'}`).join(', ')}</p>`;
-                } else {
-                    details += `<p class="text-sm text-gray-600">Horarios: No establecidos</p>`;
-                }
+                const weekdayLimit = (rule.weekday && rule.weekday.dailyLimitMinutes !== null && rule.weekday.dailyLimitMinutes !== undefined) ? rule.weekday.dailyLimitMinutes + ' min (Lun-Vie)' : 'No establecido (Lun-Vie)';
+                const weekendLimit = (rule.weekend && rule.weekend.dailyLimitMinutes !== null && rule.weekend.dailyLimitMinutes !== undefined) ? rule.weekend.dailyLimitMinutes + ' min (Sáb-Dom)' : 'No establecido (Sáb-Dom)';
+                limitCell.innerHTML = `${weekdayLimit}<br>${weekendLimit}`;
             }
-            details += `</div>`;
+            row.appendChild(limitCell);
 
-            // Add usage stats to the rule item
-            const activationCount = (usageToday.activationTimestamps || []).length;
-            details += `<div class="flex-shrink-0 text-right ml-4">
-                            <p class="text-sm text-gray-700">${usageToday.minutes} min, ${usageToday.seconds} s, ${activationCount} activaciones hoy</p>
-                        </div>`;
+            // Time Ranges Column (Combined for Weekday/Weekend)
+            const timeRangesCell = document.createElement('td');
+            timeRangesCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'text-gray-500');
+             if (rule.unrestricted) {
+                timeRangesCell.textContent = '-';
+            } else {
+                const weekdayRanges = (rule.weekday && rule.weekday.timeRanges && Array.isArray(rule.weekday.timeRanges) && rule.weekday.timeRanges.length > 0)
+                    ? rule.weekday.timeRanges.map(range => `${range.startTime || 'N/A'} - ${range.endTime || 'N/A'}`).join(', ')
+                    : 'No establecidos';
+                const weekendRanges = (rule.weekend && rule.weekend.timeRanges && Array.isArray(rule.weekend.timeRanges) && rule.weekend.timeRanges.length > 0)
+                    ? rule.weekend.timeRanges.map(range => `${range.startTime || 'N/A'} - ${range.endTime || 'N/A'}`).join(', ')
+                    : 'No establecidos';
+                 timeRangesCell.innerHTML = `Lun-Vie: ${weekdayRanges}<br>Sáb-Dom: ${weekendRanges}`;
+            }
+            row.appendChild(timeRangesCell);
+
+            // Usage Today Column
+            const usageTodayCell = document.createElement('td');
+            usageTodayCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'text-gray-500');
+            const activationCount = (usageForHostToday.activationTimestamps || []).length;
+            const secondsDisplay = (usageForHostToday.seconds !== undefined && usageForHostToday.seconds > 0) ? `, ${usageForHostToday.seconds} s` : '';
+            usageTodayCell.textContent = `${usageForHostToday.minutes} min${secondsDisplay}, ${activationCount} activaciones`;
+            row.appendChild(usageTodayCell);
 
 
-            const actionsDiv = document.createElement('div');
-            actionsDiv.classList.add('flex-shrink-0', 'ml-4', 'flex', 'space-x-2');
+            // Action Column
+            const actionsCell = document.createElement('td');
+            actionsCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-right', 'text-sm', 'font-medium');
 
-            const editButton = document.createElement('button');
-            editButton.textContent = 'Editar';
-            editButton.classList.add('px-3', 'py-1', 'bg-blue-500', 'text-white', 'rounded-md', 'hover:bg-blue-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-offset-2', 'text-sm');
-            editButton.addEventListener('click', () => populateFormForRule(host, rule));
+            const editWeekdayButton = document.createElement('button');
+            editWeekdayButton.textContent = 'Editar (Lun-Vie)';
+            editWeekdayButton.classList.add('text-blue-600', 'hover:text-blue-900', 'mr-2');
+            editWeekdayButton.addEventListener('click', () => populateFormForRule(host, rule.weekday || {}, 'weekday'));
+
+            const editWeekendButton = document.createElement('button');
+            editWeekendButton.textContent = 'Editar (Sáb-Dom)';
+            editWeekendButton.classList.add('text-blue-600', 'hover:text-blue-900', 'mr-2');
+            editWeekendButton.addEventListener('click', () => populateFormForRule(host, rule.weekend || {}, 'weekend'));
 
             const deleteButton = document.createElement('button');
             deleteButton.textContent = 'Eliminar';
-            deleteButton.classList.add('px-3', 'py-1', 'bg-red-500', 'text-white', 'rounded-md', 'hover:bg-red-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-red-500', 'focus:ring-offset-2', 'text-sm');
+            deleteButton.classList.add('text-red-600', 'hover:text-red-900');
             deleteButton.addEventListener('click', async () => {
                 if (confirm(`¿Seguro que quieres eliminar la regla para ${host}?`)) {
                     delete currentRules[host];
@@ -183,55 +266,82 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (chrome.runtime.lastError) {
                             // console.warn("Error al enviar mensaje:", chrome.runtime.lastError.message);
                         } else {
-                            // console.log("Mensaje rulesChanged enviado tras eliminar, respuesta:", response);
+                            // console.log("Message rulesChanged sent after deletion, response:", response);
                         }
                     });
                 }
             });
 
-            ruleDiv.innerHTML = details;
-            actionsDiv.appendChild(editButton);
-            actionsDiv.appendChild(deleteButton);
-            ruleDiv.appendChild(actionsDiv);
-            rulesListDiv.appendChild(ruleDiv);
+            if (!rule.unrestricted) {
+                actionsCell.appendChild(editWeekdayButton);
+                actionsCell.appendChild(editWeekendButton);
+            }
+            actionsCell.appendChild(deleteButton);
+            row.appendChild(actionsCell);
+
+            rulesTableBody.appendChild(row);
         }
     }
-    
-    function populateFormForRule(host, rule) {
+
+    function populateFormForRule(host, rule, ruleType = 'weekday') {
         hostnameInput.value = host;
-        unrestrictedCheckbox.checked = !!rule.unrestricted;
+        // unrestrictedCheckbox.checked = !!rule.unrestricted; // Unrestricted is now at the top level
         timeRangesContainer.innerHTML = ''; // Clear existing time ranges
 
-        if (rule.unrestricted) {
-            dailyLimitInput.value = '';
+        // Select the correct rule type radio button
+        document.getElementById(`ruleType${ruleType.charAt(0).toUpperCase() + ruleType.slice(1)}`).checked = true;
+
+
+        // Check the top-level unrestricted flag
+        chrome.storage.local.get('rules', (result) => {
+            const currentRules = result.rules || {};
+            const siteRule = currentRules[host] || {};
+            unrestrictedCheckbox.checked = !!siteRule.unrestricted;
+             limitsSection.style.display = unrestrictedCheckbox.checked ? 'none' : 'block';
+        });
+
+
+        if (rule.dailyLimitMinutes !== null && rule.dailyLimitMinutes !== undefined) {
+             dailyLimitInput.value = rule.dailyLimitMinutes;
         } else {
-            dailyLimitInput.value = rule.dailyLimitMinutes !== null && rule.dailyLimitMinutes !== undefined ? rule.dailyLimitMinutes : '';
-            if (rule.timeRanges && Array.isArray(rule.timeRanges) && rule.timeRanges.length > 0) {
-                rule.timeRanges.forEach(range => {
-                    addTimeRangeInput(range.startTime, range.endTime);
-                });
-            } else {
-                 // Add one empty time range input if none exist
-                 addTimeRangeInput();
-            }
+            dailyLimitInput.value = '';
         }
-        limitsSection.style.display = unrestrictedCheckbox.checked ? 'none' : 'block';
+
+        if (rule.timeRanges && Array.isArray(rule.timeRanges) && rule.timeRanges.length > 0) {
+            rule.timeRanges.forEach(range => {
+                addTimeRangeInput(range.startTime, range.endTime);
+            });
+        } else {
+             // Add one empty time range input if none exist
+             addTimeRangeInput();
+        }
+
         hostnameInput.focus(); // Mover el foco al inicio del formulario
     }
 
     async function loadUsageStats() {
-        const { usageData, rules } = await chrome.storage.local.get(['usageData', 'rules']);
-        const currentUsage = usageData || {};
-        const currentRules = rules || {};
+        console.log("Attempting to load usage stats and get element 'usageStats'"); // Add logging here
+         if (!usageStatsDiv) {
+             console.error("Element with ID 'usageStats' not found.");
+             return;
+         }
         usageStatsDiv.innerHTML = ''; // Limpiar
 
         const today = new Date().toISOString().split('T')[0];
+        const usageKeyToday = `usage${today}`;
+        const usageTodayData = await chrome.storage.local.get(usageKeyToday);
+        const currentUsageToday = usageTodayData[usageKeyToday] || {};
+
+        const { rules } = await chrome.storage.local.get('rules');
+        const currentRules = rules || {};
+
+
         let foundStats = false;
 
         // Get all hosts that have usage data or rules (excluding unrestricted)
         const trackedHosts = new Set([
-            ...Object.keys(currentUsage),
-            ...Object.keys(currentRules).filter(host => !currentRules[host].unrestricted)
+            ...Object.keys(currentUsageToday), // Get hosts from today's usage
+            ...Object.keys(currentRules).filter(host => !currentRules[host].unrestricted) // Get hosts from rules
         ]);
 
 
@@ -244,18 +354,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortedHosts = Array.from(trackedHosts).sort();
 
         for (const host of sortedHosts) {
-            const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, seconds: 0, activationTimestamps: [] };
+            const usageForHostToday = currentUsageToday[host] || { minutes: 0, seconds: 0, activationTimestamps: [] };
             const siteRule = currentRules[host];
             
             const p = document.createElement('p');
             p.classList.add('flex', 'items-center', 'justify-between', 'text-sm', 'text-gray-700'); // Add flex classes for layout
 
-            const activationCount = (usageToday.activationTimestamps || []).length;
-            let statText = `<strong>${host}:</strong> ${usageToday.minutes} minutos, ${usageToday.seconds} segundos, ${activationCount} activaciones hoy.`;
-            if (siteRule && siteRule.dailyLimitMinutes) {
-                statText += ` (Límite: ${siteRule.dailyLimitMinutes} min).`;
+            const activationCount = (usageForHostToday.activationTimestamps || []).length;
+            let statText = `<strong>${host}:</strong> ${usageForHostToday.minutes} minutos, ${usageForHostToday.seconds} segundos, ${activationCount} activaciones hoy.`;
+            // Display the relevant daily limit based on today's day of the week
+            const todayDayOfWeek = new Date().getDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
+            const isWeekend = todayDayOfWeek === 0 || todayDayOfWeek === 6;
+            const ruleTypeToday = isWeekend ? 'weekend' : 'weekday';
+            const dailyLimitToday = siteRule?.[ruleTypeToday]?.dailyLimitMinutes;
+
+            if (dailyLimitToday !== null && dailyLimitToday !== undefined) {
+                statText += ` (Límite hoy: ${dailyLimitToday} min).`;
+            } else if (siteRule?.unrestricted) {
+                 statText += ` (Ilimitado).`;
+            } else {
+                 statText += ` (Límite hoy: No establecido).`;
             }
-            
+
+
             const textSpan = document.createElement('span');
             textSpan.innerHTML = statText;
             p.appendChild(textSpan);
@@ -264,7 +385,8 @@ document.addEventListener('DOMContentLoaded', () => {
             createRuleButton.textContent = 'Crear Regla';
             createRuleButton.classList.add('ml-4', 'px-3', 'py-1', 'bg-blue-500', 'text-white', 'rounded-md', 'hover:bg-blue-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-offset-2', 'text-sm', 'flex-shrink-0');
             createRuleButton.addEventListener('click', () => {
-                populateFormForRule(host, { timeRanges: [] }); // Populate form with host and empty time ranges
+                // When creating a rule from stats, default to weekday rule type
+                populateFormForRule(host, { timeRanges: [] }, 'weekday');
             });
             p.appendChild(createRuleButton);
 
@@ -285,13 +407,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 
-    // Actualizar estadísticas periódicamente o cuando se abra el popup
-    setInterval(loadUsageStats, 30 * 1000); // Cada 30 segundos
 
     const clearTrackingDataButton = document.getElementById('clearTrackingData');
     clearTrackingDataButton.addEventListener('click', async () => {
         if (confirm("¿Estás seguro de que quieres borrar todos los datos de uso y pestañas visitadas? Las reglas configuradas no se eliminarán.")) {
-            await chrome.storage.local.remove(['usageData', 'visitedTabs']);
+            // Get all keys that start with 'usage'
+            const allStorageKeys = await chrome.storage.local.get(null);
+            const usageKeys = Object.keys(allStorageKeys).filter(key => key.startsWith('usage'));
+            
+            // Remove usage keys and visitedTabs
+            await chrome.storage.local.remove([...usageKeys, 'visitedTabs']);
+
             showStatus("Datos de uso y pestañas visitadas borrados.", false);
             loadUsageStats(); // Recargar estadísticas para mostrar que están vacías
             renderActivationsTable(); // Recargar tabla
@@ -299,9 +425,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Gráfico de Activaciones ---
-    const timeResolutionSelect = document.getElementById('timeResolution');
-    const activationsTableContainer = document.getElementById('activationsTableContainer'); // New container for the table
-    const activationDateInput = document.getElementById('activationDate'); // Get the new date input
 
     // Set the default date to today
     const today = new Date();
@@ -320,9 +443,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedDateString = activationDateInput.value; // Get the selected date
         const selectedDate = new Date(selectedDateString);
 
-        const { usageData } = await chrome.storage.local.get('usageData');
-        const currentUsage = usageData || {};
         const selectedDateKey = selectedDate.toISOString().split('T')[0]; // Use selected date for data key
+        const usageKeySelectedDate = `usage${selectedDateKey}`;
+        const usageDataSelectedDate = await chrome.storage.local.get(usageKeySelectedDate);
+        const currentUsageSelectedDate = usageDataSelectedDate[usageKeySelectedDate] || {};
+
 
         const now = new Date();
         let overallStartTime = new Date(selectedDate); // Start from the beginning of the selected day
@@ -393,9 +518,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const aggregatedData = {}; // { host: { bucketStartTime: count } }
         const timeBuckets = new Set();
 
-        for (const host in currentUsage) {
-            if (currentUsage[host] && currentUsage[host][selectedDateKey] && currentUsage[host][selectedDateKey].activationTimestamps) {
-                const timestamps = currentUsage[host][selectedDateKey].activationTimestamps.filter(ts => ts >= overallStartTime.getTime() && ts <= overallEndTime);
+        for (const host in currentUsageSelectedDate) {
+            if (currentUsageSelectedDate[host] && currentUsageSelectedDate[host].activationTimestamps) {
+                const timestamps = currentUsageSelectedDate[host].activationTimestamps.filter(ts => ts >= overallStartTime.getTime() && ts <= overallEndTime);
 
                 if (timestamps.length > 0) {
                     aggregatedData[host] = {};
@@ -432,19 +557,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sortedHosts.length === 0) {
             tableHTML += '<tr><td colspan="' + (sortedTimeBuckets.length + 1) + '" class="px-6 py-4 text-center text-sm text-gray-500">No hay datos de activación para mostrar en este período.</td></tr>';
         } else {
-            const today = new Date().toISOString().split('T')[0];
-
             for (const host of sortedHosts) {
-                const usageToday = (currentUsage[host] && currentUsage[host][today]) ? currentUsage[host][today] : { minutes: 0, seconds: 0, activationTimestamps: [] };
+                const usageForHostSelectedDate = currentUsageSelectedDate[host] || { minutes: 0, seconds: 0, activationTimestamps: [] };
                 tableHTML += '<tr>';
                 tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${host}</td>`;
                 for (const bucketTime of sortedTimeBuckets) {
                     const count = aggregatedData[host][bucketTime] || 0;
                     tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${count}</td>`;
                 }
-                // Add Tiempo Hoy column
-                const secondsDisplay = (usageToday.seconds !== undefined && usageToday.seconds > 0) ? `, ${usageToday.seconds} s` : '';
-                tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${usageToday.minutes} min${secondsDisplay}</td>`;
+                // Add Tiempo Hoy column (should be Tiempo en la fecha seleccionada)
+                const secondsDisplay = (usageForHostSelectedDate.seconds !== undefined && usageForHostSelectedDate.seconds > 0) ? `, ${usageForHostSelectedDate.seconds} s` : '';
+                tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${usageForHostSelectedDate.minutes} min${secondsDisplay}</td>`;
                 // Add Action column with button
                 tableHTML += `<td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <button class="create-rule-button text-blue-600 hover:text-blue-900" data-host="${host}">Crear Regla</button>
@@ -461,9 +584,33 @@ document.addEventListener('DOMContentLoaded', () => {
         activationsTableContainer.querySelectorAll('.create-rule-button').forEach(button => {
             button.addEventListener('click', (event) => {
                 const host = event.target.dataset.host;
-                populateFormForRule(host, { timeRanges: [] }); // Populate form with host and empty time ranges
+                populateFormForRule(host, { timeRanges: [] }, 'weekday'); // Default to weekday when creating rule from stats
             });
         });
+
+        // Display total daily usage below the table
+        let totalUsageSummaryHTML = '<div class="mt-6">';
+        totalUsageSummaryHTML += '<h3 class="text-lg font-semibold mb-2">Resumen de Uso Diario (' + selectedDateKey + ')</h3>';
+
+        const hostsWithUsage = Object.keys(currentUsageSelectedDate);
+
+        if (hostsWithUsage.length === 0) {
+            totalUsageSummaryHTML += '<p class="text-gray-600">No hay datos de uso para esta fecha.</p>';
+        } else {
+             // Sort hosts alphabetically for consistent display
+            const sortedHostsWithUsage = hostsWithUsage.sort();
+
+            for (const host of sortedHostsWithUsage) {
+                const usage = currentUsageSelectedDate[host];
+                const secondsDisplay = (usage.seconds !== undefined && usage.seconds > 0) ? `, ${usage.seconds} s` : '';
+                const activationCount = (usage.activationTimestamps || []).length;
+                totalUsageSummaryHTML += `<p class="text-sm text-gray-700"><strong>${host}:</strong> ${usage.minutes} minutos${secondsDisplay}, ${activationCount} activaciones.</p>`;
+            }
+        }
+
+        totalUsageSummaryHTML += '</div>';
+        activationsTableContainer.innerHTML += totalUsageSummaryHTML; // Append the summary below the table
+
     }
 
     // Helper function to get host from URL (replicated from background.js for now)
