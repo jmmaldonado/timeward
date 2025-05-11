@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Site Column with Edit button
             const siteCell = document.createElement('td');
-            siteCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'font-medium', 'text-gray-900', 'flex', 'items-center');
+            siteCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'font-medium', 'text-gray-900', 'flex', 'items-center', 'gap-2', 'justify-start');
             
             const editButton = document.createElement('button');
             editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 inline-block mr-2 align-middle text-blue-600 hover:text-blue-900"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>`;
@@ -247,6 +247,24 @@ document.addEventListener('DOMContentLoaded', () => {
             editButton.classList.add('focus:outline-none');
             editButton.addEventListener('click', () => populateFormForHost(host));
             siteCell.appendChild(editButton);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.innerHTML = `<svg width="16px" height="16px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#ff0000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6M14 10V17M10 10V17" stroke="#ff0000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>`
+            deleteButton.classList.add('text-red-600', 'hover:text-red-900', 'focus:outline-none', 'pr-2');
+            deleteButton.addEventListener('click', async () => {
+                if (confirm(`¿Seguro que quieres eliminar la regla para ${host}?`)) {
+                    const { rules: freshRules } = await chrome.storage.local.get('rules');
+                    let modifiableRules = freshRules || {};
+                    delete modifiableRules[host];
+                    await chrome.storage.local.set({ rules: modifiableRules });
+                    loadRules(); 
+                    showStatus(`Regla para '${host}' eliminada.`, false);
+                    chrome.runtime.sendMessage({ type: "rulesChanged" }, (response) => {
+                        if (chrome.runtime.lastError) { /* console.warn("Error sending message:", chrome.runtime.lastError.message); */ }
+                    });
+                }
+            });
+            siteCell.appendChild(deleteButton);
 
             const hostTextNode = document.createTextNode(host);
             siteCell.appendChild(hostTextNode);
@@ -295,25 +313,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Action Column
             const actionsCell = document.createElement('td');
             actionsCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-right', 'text-sm', 'font-medium');
-            
-            const deleteButton = document.createElement('button');
-            deleteButton.textContent = 'Eliminar';
-            deleteButton.classList.add('text-red-600', 'hover:text-red-900', 'focus:outline-none');
-            deleteButton.addEventListener('click', async () => {
-                if (confirm(`¿Seguro que quieres eliminar la regla para ${host}?`)) {
-                    const { rules: freshRules } = await chrome.storage.local.get('rules');
-                    let modifiableRules = freshRules || {};
-                    delete modifiableRules[host];
-                    await chrome.storage.local.set({ rules: modifiableRules });
-                    loadRules(); 
-                    showStatus(`Regla para '${host}' eliminada.`, false);
-                    chrome.runtime.sendMessage({ type: "rulesChanged" }, (response) => {
-                        if (chrome.runtime.lastError) { /* console.warn("Error sending message:", chrome.runtime.lastError.message); */ }
-                    });
-                }
-            });
-            actionsCell.appendChild(deleteButton);
-            row.appendChild(actionsCell);
 
             rulesTableBody.appendChild(row);
         }
