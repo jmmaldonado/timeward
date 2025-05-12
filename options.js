@@ -1,5 +1,6 @@
 // options.js
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => { // Make async for initial password check
+    // Existing elements
     const hostnameInput = document.getElementById('hostname');
     const unrestrictedCheckbox = document.getElementById('unrestricted');
     const dailyLimitInput = document.getElementById('dailyLimit');
@@ -16,14 +17,74 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeResolutionSelect = document.getElementById('timeResolution');
     const ruleTypeWeekdayRadio = document.getElementById('ruleTypeWeekday');
     const ruleTypeWeekendRadio = document.getElementById('ruleTypeWeekend');
+    const clearTrackingDataButton = document.getElementById('clearTrackingData');
+
+    // Password related elements
+    const createPasswordSection = document.getElementById('create-password-section');
+    const newPasswordInput = document.getElementById('newPassword');
+    const confirmPasswordInput = document.getElementById('confirmPassword');
+    const savePasswordButton = document.getElementById('savePasswordButton');
+    const passwordStatusP = document.getElementById('passwordStatus');
+    const unlockSection = document.getElementById('unlock-section');
+    const passwordInput = document.getElementById('passwordInput');
+    const unlockButton = document.getElementById('unlockButton');
+    const unlockStatusP = document.getElementById('unlockStatus');
+    const configSection = document.getElementById('config-section');
+    const lockButton = document.getElementById('lockButton');
 
     // Mode selection elements
     const modeMonitoringRadio = document.getElementById('modeMonitoring');
     const modePermissiveRadio = document.getElementById('modePermissive');
     const modeStrictRadio = document.getElementById('modeStrict');
 
+    let isUnlocked = false; // State variable to track if config is accessible
+
+    // --- Password Handling Functions ---
+
+    function showPasswordStatus(message, isError = true) {
+        passwordStatusP.textContent = message;
+        passwordStatusP.style.color = isError ? 'red' : 'green';
+        if (!isError) {
+            setTimeout(() => { passwordStatusP.textContent = ''; }, 3000);
+        }
+    }
+
+    function showUnlockStatus(message, isError = true) {
+        unlockStatusP.textContent = message;
+        unlockStatusP.style.color = isError ? 'red' : 'green';
+        if (!isError) {
+            setTimeout(() => { unlockStatusP.textContent = ''; }, 3000);
+        }
+    }
+
+    function lockConfiguration() {
+        isUnlocked = false;
+        configSection.classList.add('hidden');
+        unlockSection.classList.remove('hidden');
+        createPasswordSection.classList.add('hidden'); // Ensure create is hidden when locking
+        passwordInput.value = ''; // Clear password field on lock
+        unlockStatusP.textContent = ''; // Clear any previous unlock errors
+    }
+
+    function unlockConfiguration() {
+        isUnlocked = true;
+        configSection.classList.remove('hidden');
+        unlockSection.classList.add('hidden');
+        createPasswordSection.classList.add('hidden');
+        passwordInput.value = ''; // Clear password field on unlock
+        unlockStatusP.textContent = '';
+        // Load rules and settings only after unlocking
+        loadRules();
+        loadOperationMode();
+        initializeActivationsTable(); // Initialize or re-render activations table
+    }
+
+    // --- End Password Handling Functions ---
+
+
     // Function to add a time range input group
     function addTimeRangeInput(startTime = '', endTime = '') {
+        if (!isUnlocked) return; // Protect action
         const timeRangeDiv = document.createElement('div');
         timeRangeDiv.classList.add('time-range-item', 'flex', 'items-center', 'space-x-2', 'mb-2');
         timeRangeDiv.innerHTML = `
@@ -128,6 +189,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save Rule Button Event Listener
     saveRuleButton.addEventListener('click', async () => {
+        if (!isUnlocked) {
+            showStatus("Desbloquea la configuración para guardar.", true);
+            return;
+        }
         const hostname = hostnameInput.value.trim().toLowerCase();
         if (!hostname) {
             showStatus("El nombre del sitio no puede estar vacío.", true);
@@ -256,11 +321,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const deleteButton = document.createElement('button');
             deleteButton.innerHTML = `<svg width="16px" height="16px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#ff0000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6M14 10V17M10 10V17" stroke="#ff0000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>`
             deleteButton.classList.add('text-red-600', 'hover:text-red-900', 'focus:outline-none', 'pr-2');
-            deleteButton.addEventListener('click', async () => {
-                if (confirm(`¿Seguro que quieres eliminar la regla para ${host}?`)) {
-                    const { rules: freshRules } = await chrome.storage.local.get('rules');
-                    let modifiableRules = freshRules || {};
-                    delete modifiableRules[host];
+                    deleteButton.addEventListener('click', async () => {
+                        if (!isUnlocked) {
+                            showStatus("Desbloquea la configuración para eliminar.", true);
+                            return;
+                        }
+                        if (confirm(`¿Seguro que quieres eliminar la regla para ${host}?`)) {
+                            const { rules: freshRules } = await chrome.storage.local.get('rules');
+                            let modifiableRules = freshRules || {};
+                            delete modifiableRules[host];
                     await chrome.storage.local.set({ rules: modifiableRules });
                     loadRules(); 
                     showStatus(`Regla para '${host}' eliminada.`, false);
@@ -406,10 +475,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     // loadUsageStats(); // Call if this section is to be active
 
-    // Clear Tracking Data Button
-    const clearTrackingDataButton = document.getElementById('clearTrackingData');
-    if (clearTrackingDataButton) { // Check if element exists
+    // Clear Tracking Data Button Listener (check if button exists)
+    if (clearTrackingDataButton) {
         clearTrackingDataButton.addEventListener('click', async () => {
+            if (!isUnlocked) {
+                showStatus("Desbloquea la configuración para borrar datos.", true);
+                return;
+            }
             if (confirm("¿Estás seguro de que quieres borrar todos los datos de uso y pestañas visitadas? Las reglas configuradas no se eliminarán.")) {
                 const allStorageKeys = await chrome.storage.local.get(null);
                 const usageKeys = Object.keys(allStorageKeys).filter(key => key.startsWith('usage'));
@@ -428,6 +500,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // This function is now called by initializeActivationsTable and its event listeners
 
     async function renderActivationsTable() {
+        if (!isUnlocked) { // Don't render if locked
+             // Optionally clear the table or show a message
+             const activationsTableContainer = document.getElementById('activationsTableContainer');
+             if (activationsTableContainer) activationsTableContainer.innerHTML = '<p class="text-gray-500 text-center py-4">Desbloquea para ver activaciones.</p>';
+             const summaryDiv = document.getElementById('activationsSummary');
+             if (summaryDiv) summaryDiv.innerHTML = '';
+             return;
+        }
         const activationsTableContainer = document.getElementById('activationsTableContainer');
         const timeResolutionSelect = document.getElementById('timeResolution');
         const activationDateInput = document.getElementById('activationDate');
@@ -576,6 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         activationsTableContainer.querySelectorAll('.create-rule-button').forEach(button => {
             button.addEventListener('click', (event) => {
+                if (!isUnlocked) return; // Protect action
                 const host = event.target.dataset.host;
                 populateFormForHost(host);
             });
@@ -609,4 +690,101 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         summaryDiv.innerHTML = totalUsageSummaryHTML;
     }
+
+    // --- Initialization and Password Check ---
+
+    async function initializeOptionsPage() {
+        try {
+            const result = await chrome.storage.sync.get('configPassword');
+            const storedPassword = result.configPassword;
+
+            if (!storedPassword) {
+                // No password set - show creation section
+                createPasswordSection.classList.remove('hidden');
+                unlockSection.classList.add('hidden');
+                configSection.classList.add('hidden');
+            } else {
+                // Password exists - show unlock section
+                unlockSection.classList.remove('hidden');
+                createPasswordSection.classList.add('hidden');
+                configSection.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error("Error checking password:", error);
+            unlockSection.classList.remove('hidden'); // Fallback to unlock section on error
+            createPasswordSection.classList.add('hidden');
+            configSection.classList.add('hidden');
+            showUnlockStatus("Error al verificar la contraseña.", true);
+        }
+    }
+
+    // --- Event Listeners for Password Sections ---
+
+    savePasswordButton.addEventListener('click', async () => {
+        const newPass = newPasswordInput.value;
+        const confirmPass = confirmPasswordInput.value;
+
+        if (!newPass || !confirmPass) {
+            showPasswordStatus("Ambos campos de contraseña son requeridos.", true);
+            return;
+        }
+        if (newPass !== confirmPass) {
+            showPasswordStatus("Las contraseñas no coinciden.", true);
+            return;
+        }
+
+        try {
+            // For now, storing directly. Hashing should be added here later.
+            await chrome.storage.sync.set({ configPassword: newPass });
+            showPasswordStatus("Contraseña guardada con éxito.", false);
+            newPasswordInput.value = '';
+            confirmPasswordInput.value = '';
+            unlockConfiguration(); // Unlock and load settings
+        } catch (error) {
+            console.error("Error saving password:", error);
+            showPasswordStatus("Error al guardar la contraseña.", true);
+        }
+    });
+
+    unlockButton.addEventListener('click', async () => {
+        const enteredPassword = passwordInput.value;
+        if (!enteredPassword) {
+            showUnlockStatus("Por favor, introduce la contraseña.", true);
+            return;
+        }
+
+        try {
+            const result = await chrome.storage.sync.get('configPassword');
+            const storedPassword = result.configPassword;
+
+            if (enteredPassword === storedPassword) {
+                showUnlockStatus("Desbloqueado.", false);
+                unlockConfiguration(); // Unlock and load settings
+            } else {
+                showUnlockStatus("Contraseña incorrecta.", true);
+                passwordInput.value = ''; // Clear incorrect password
+                isUnlocked = false; // Ensure state is locked
+            }
+        } catch (error) {
+            console.error("Error verifying password:", error);
+            showUnlockStatus("Error al verificar la contraseña.", true);
+            isUnlocked = false; // Ensure state is locked
+        }
+    });
+
+    // Add listener for Enter key in password input
+    passwordInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent potential form submission
+            unlockButton.click(); // Trigger unlock button click
+        }
+    });
+
+    lockButton.addEventListener('click', () => {
+        lockConfiguration();
+    });
+
+    // Initial page setup
+    await initializeOptionsPage();
+
 });
