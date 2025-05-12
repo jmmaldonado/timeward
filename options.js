@@ -17,6 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const ruleTypeWeekdayRadio = document.getElementById('ruleTypeWeekday');
     const ruleTypeWeekendRadio = document.getElementById('ruleTypeWeekend');
 
+    // Mode selection elements
+    const modeMonitoringRadio = document.getElementById('modeMonitoring');
+    const modePermissiveRadio = document.getElementById('modePermissive');
+    const modeStrictRadio = document.getElementById('modeStrict');
+
     // Function to add a time range input group
     function addTimeRangeInput(startTime = '', endTime = '') {
         const timeRangeDiv = document.createElement('div');
@@ -327,8 +332,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 
+    // Function to save the selected operation mode
+    async function saveOperationMode(mode) {
+        await chrome.storage.local.set({ operationMode: mode });
+        showStatus(`Modo de operación cambiado a '${mode}'.`, false);
+    }
+
+    // Function to load the saved operation mode
+    async function loadOperationMode() {
+        const result = await chrome.storage.local.get('operationMode');
+        const savedMode = result.operationMode || 'permissive'; // Default to permissive
+
+        switch (savedMode) {
+            case 'monitoring':
+                modeMonitoringRadio.checked = true;
+                break;
+            case 'strict':
+                modeStrictRadio.checked = true;
+                break;
+            case 'permissive':
+            default:
+                modePermissiveRadio.checked = true;
+                break;
+        }
+    }
+
+    // Event listeners for mode selection
+    modeMonitoringRadio.addEventListener('change', () => saveOperationMode('monitoring'));
+    modePermissiveRadio.addEventListener('change', () => saveOperationMode('permissive'));
+    modeStrictRadio.addEventListener('change', () => saveOperationMode('strict'));
+
+
     // Load initial data
     loadRules();
+    loadOperationMode(); // Load the saved mode on page load
 
     // --- Handle Activations Table Date Input Initialization and Rendering ---
     function initializeActivationsTable() {

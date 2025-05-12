@@ -10,6 +10,25 @@
     <div class="container bg-white p-6 rounded-lg shadow-md mx-auto">
         <h1 class="text-2xl font-bold mb-4">Configuración de Control de Navegación</h1>
 
+        <h2 class="text-xl font-semibold mb-3 mt-6">Modo de Operación</h2>
+        <div class="mb-6">
+            <p class="block text-sm font-medium text-gray-700 mb-2">Selecciona el modo en que la extensión controlará tu navegación:</p>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center">
+                    <input type="radio" id="modeMonitoring" name="operationMode" value="monitoring" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <label for="modeMonitoring" class="ml-2 block text-sm text-gray-900 font-normal">Monitorización (Solo registra, no bloquea)</label>
+                </div>
+                <div class="flex items-center">
+                    <input type="radio" id="modePermissive" name="operationMode" value="permissive" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" checked>
+                    <label for="modePermissive" class="ml-2 block text-sm text-gray-900 font-normal">Permisivo (Bloquea solo sitios con reglas fuera de horario/límite)</label>
+                </div>
+                <div class="flex items-center">
+                    <input type="radio" id="modeStrict" name="operationMode" value="strict" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <label for="modeStrict" class="ml-2 block text-sm text-gray-900 font-normal">Estricto (Bloquea todo excepto sitios con reglas dentro de horario/límite)</label>
+                </div>
+            </div>
+        </div>
+
         <h2 class="text-xl font-semibold mb-3 mt-6">Añadir/Modificar Regla</h2>
         <div class="mb-6">
             <label for="hostname" class="block text-sm font-medium text-gray-700 mb-1">Sitio web (ej: youtube.com, sin http/www):</label>

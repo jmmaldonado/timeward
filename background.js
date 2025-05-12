@@ -413,13 +413,35 @@ const DEFAULT_RULES = {
   async function checkAndBlockIfNeeded(tabId, host, urlToBlock) {
     if (!host) return false; // Cannot block without a host
 
+    // 1. Get Operation Mode
+    const { operationMode: mode } = await chrome.storage.local.get({ operationMode: 'permissive' }); // Default to permissive
+
+    // 2. Monitoring Mode: Never block
+    if (mode === 'monitoring') {
+        // console.log(`[Mode: Monitoring] Allowing ${host} (monitoring mode).`);
+        return false;
+    }
+
+    // 3. Get Rules
     const { rules } = await chrome.storage.local.get("rules");
     const siteRules = (rules || DEFAULT_RULES)[host];
 
-    if (!siteRules || siteRules.unrestricted) {
-      // console.log(`Sitio ${host} sin reglas o irrestricto. No se bloquea.`);
-      return false; // Not blocked
+    // 4. Strict Mode: Block if no rule exists
+    if (mode === 'strict' && !siteRules) {
+        // console.log(`[Mode: Strict] BLOCKING ${host} (ID: ${tabId}) because no rule exists.`);
+        await blockTab(tabId, host, urlToBlock, `Bloqueado por modo Estricto (sin regla definida).`);
+        return true; // Blocked
     }
+
+    // 5. Permissive Mode: Allow if no rule exists (or if unrestricted)
+    // Also handles unrestricted case for Strict mode
+    if (!siteRules || siteRules.unrestricted) {
+        // console.log(`[Mode: ${mode}] Allowing ${host} (no rule/unrestricted).`);
+        return false; // Not blocked
+    }
+
+    // --- Rule exists and is not unrestricted ---
+    // The following checks apply to both Permissive and Strict modes when a specific rule is found.
 
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -430,58 +452,75 @@ const DEFAULT_RULES = {
 
     const ruleToday = siteRules[ruleTypeToday];
 
-    // If there's no specific rule for today (weekday/weekend), don't block based on limits/time ranges
+    // If there's no specific rule for today (weekday/weekend)
     if (!ruleToday) {
-        // console.log(`Sitio ${host} no tiene regla configurada para ${ruleTypeToday}. No se bloquea.`);
-        return false;
+        if (mode === 'strict') {
+            // console.log(`[Mode: Strict] BLOCKING ${host} (ID: ${tabId}) because no specific rule for ${ruleTypeToday}.`);
+            await blockTab(tabId, host, urlToBlock, `Bloqueado por modo Estricto (sin regla para ${ruleTypeToday}).`);
+            return true; // Blocked
+        } else { // Permissive mode
+            // console.log(`[Mode: Permissive] Allowing ${host} because no specific rule for ${ruleTypeToday}.`);
+            return false; // Allow
+        }
     }
 
-    // 1. Comprobar horario
+    // --- Rule for today exists ---
+
+    // 6. Check Time Ranges
+    let isWithinAllowedTime = true; // Assume allowed if no ranges are defined
     if (ruleToday.timeRanges && Array.isArray(ruleToday.timeRanges) && ruleToday.timeRanges.length > 0) {
-        let isWithinAllowedTime = false;
+        isWithinAllowedTime = false; // Requires explicit match if ranges exist
         // console.log(`Checking time ranges for ${host} (${ruleTypeToday}):`, ruleToday.timeRanges);
         for (const range of ruleToday.timeRanges) {
             if (range.startTime && range.endTime) {
-                if (currentTimeStr >= range.startTime && currentTimeStr < range.endTime) {
-                    isWithinAllowedTime = true;
-                    break; // Found a valid time range, no need to check further
+                // Handle overnight ranges (e.g., 22:00 - 06:00)
+                if (range.startTime > range.endTime) {
+                    if (currentTimeStr >= range.startTime || currentTimeStr < range.endTime) {
+                        isWithinAllowedTime = true;
+                        break;
+                    }
+                } else { // Normal range (e.g., 08:00 - 18:00)
+                    if (currentTimeStr >= range.startTime && currentTimeStr < range.endTime) {
+                        isWithinAllowedTime = true;
+                        break;
+                    }
                 }
             }
         }
         if (!isWithinAllowedTime) {
-            // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por estar fuera de los horarios permitidos para ${ruleTypeToday}.`);
+            // console.log(`[Mode: ${mode}] BLOCKING ${host} (ID: ${tabId}) for being outside allowed time ranges for ${ruleTypeToday}.`);
             await blockTab(tabId, host, urlToBlock, `Fuera de los horarios permitidos para ${ruleTypeToday}.`);
-            return true; // Blocked
+            return true; // Blocked (Applies to both Permissive and Strict)
         }
     }
 
-    // 2. Comprobar límite de tiempo diario
+    // 7. Check Daily Limit
     const usageKeyToday = `usage${todayStr}`;
     const usageTodayData = await chrome.storage.local.get(usageKeyToday);
     const currentUsageToday = usageTodayData[usageKeyToday] || {};
     const usedToday = currentUsageToday[host] || { minutes: 0, seconds: 0, activationTimestamps: [] };
 
     let currentSessionSeconds = 0;
-
-    // Considerar el tiempo de la sesión activa actual que aún no se ha guardado
     if (siteTimers[host] && siteTimers[host].intervalId && siteTimers[host].lastFocusTime) {
         currentSessionSeconds = Math.round((Date.now() - siteTimers[host].lastFocusTime) / 1000);
     }
 
-    // Add current session time to the usage data for the check
     let totalSecondsConsidered = (usedToday.minutes * 60) + usedToday.seconds + currentSessionSeconds;
     let totalMinutesConsidered = Math.floor(totalSecondsConsidered / 60);
 
-    // console.log(`[checkAndBlockIfNeeded] Host: ${host} (${ruleTypeToday}), Daily Limit: ${ruleToday.dailyLimitMinutes} min, Used Today (considered): ${totalMinutesConsidered} min`);
+    // console.log(`[Mode: ${mode}] Host: ${host} (${ruleTypeToday}), Daily Limit: ${ruleToday.dailyLimitMinutes} min, Used Today (considered): ${totalMinutesConsidered} min`);
 
     if (ruleToday.dailyLimitMinutes !== null && ruleToday.dailyLimitMinutes !== undefined && totalMinutesConsidered >= ruleToday.dailyLimitMinutes) {
-      // console.log(`BLOQUEANDO ${host} (ID: ${tabId}) por límite de tiempo diario excedido (${totalMinutesConsidered}min / ${ruleToday.dailyLimitMinutes}min) para ${ruleTypeToday}.`);
-      await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario (${ruleToday.dailyLimitMinutes} min) alcanzado para ${ruleTypeToday}.`);
-      return true; // Blocked
+        // console.log(`[Mode: ${mode}] BLOCKING ${host} (ID: ${tabId}) due to exceeded daily time limit (${totalMinutesConsidered}min / ${ruleToday.dailyLimitMinutes}min) for ${ruleTypeToday}.`);
+        await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario (${ruleToday.dailyLimitMinutes} min) alcanzado para ${ruleTypeToday}.`);
+        return true; // Blocked (Applies to both Permissive and Strict)
     }
-    // console.log(`Sitio ${host} verificado. No requiere bloqueo. Uso hoy: ${totalMinutesConsidered}min. Límite (${ruleTypeToday}): ${ruleToday.dailyLimitMinutes}min. Horario (${ruleTypeToday}): ${JSON.stringify(ruleToday.timeRanges)}`);
+
+    // 8. If all checks passed, allow
+    // console.log(`[Mode: ${mode}] Allowing ${host} (within limits/time ranges).`);
     return false; // Not blocked
   }
+
 
   async function blockTab(tabId, host, originalUrl, reason) {
     // Pausar el timer antes de redirigir para guardar el último fragmento de tiempo
