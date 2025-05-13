@@ -1,40 +1,45 @@
 {
-    "manifest_version": 3,
-    "name": "Timeward",
-    "version": "1.0.0",
-    "description": "Monitoriza y limita el tiempo de acceso a sitios web.",
-    "permissions": [
-      "tabs",
-      "storage",
-      "alarms",
-      "webNavigation",
-      "scripting"
-    ],
-    "host_permissions": [
-      "<all_urls>"
-    ],
-    "background": {
-      "service_worker": "background.js"
-    },
-    "options_page": "options.html",
-    "action": {
-      "default_popup": "options.html",
-      "default_icon": {
-        "16": "icons/icon16.png",
-        "48": "icons/icon48.png",
-        "128": "icons/icon128.png"
-      }
-    },
-    "icons": {
+  "manifest_version": 3,
+  "name": "Timeward",
+  "version": "1.0.0",
+  "description": "Monitoriza y limita el tiempo de acceso a sitios web.",
+  "update_url": "https://jmmaldonado.github.io/timeward/updates.xml",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "webNavigation",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_popup": "options.html",
+    "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    },
-    "web_accessible_resources": [
-      {
-        "resources": ["blocked.html", "css/style.css"],
-        "matches": ["<all_urls>"]
-      }
-    ]
-  }
-  
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "css/style.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
