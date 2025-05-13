@@ -7,10 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('blockedUrl').textContent = host || url || 'Desconocido';
     document.getElementById('blockReason').textContent = reason || 'No especificado.';
 
-    const optionsLink = document.getElementById('optionsLink');
-    if (chrome && chrome.runtime && chrome.runtime.getURL) {
-        optionsLink.href = chrome.runtime.getURL('options.html');
-    } else {
-        optionsLink.style.display = 'none'; // Ocultar si no se puede obtener la URL de opciones
+
+    // Set the href for the return link
+    const returnLink = document.getElementById('returnLink');
+    if (returnLink && url) {
+        returnLink.href = url;
+    } else if (returnLink) {
+        returnLink.style.display = 'none'; // Hide the link if no URL is available
     }
 });

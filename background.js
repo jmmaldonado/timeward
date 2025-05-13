@@ -94,12 +94,12 @@ const DEFAULT_RULES = {
   }
   
   // --- Seguimiento del Foco del Navegador ---
-  chrome.windows.onFocusChanged.addListener((windowId) => {
+  chrome.windows.onFocusChanged.addListener(async (windowId) => { // Added async here
     isBrowserFocused = windowId !== chrome.windows.WINDOW_ID_NONE;
     if (isBrowserFocused) {
       // console.log(`Foco del navegador GANADO por la ventana ID: ${windowId}`);
       if (windowId !== chrome.windows.WINDOW_ID_NONE) {
-        chrome.windows.get(windowId, { populate: true }, (window) => {
+        chrome.windows.get(windowId, { populate: true }, async (window) => { // Added async here
           if (window) {
             // console.log(`Ventana enfocada ID: ${windowId}, Tipo: ${window.type}`);
             // If the focused window has tabs and is not a devtools window
@@ -110,9 +110,12 @@ const DEFAULT_RULES = {
                 lastKnownWindowId = windowId;
                 const host = getHostFromUrl(activeTab.url);
                 if (host) {
-                  checkAndBlockIfNeeded(activeTab.id, host, activeTab.url); // No await needed here as it's not critical path for focus change
-                  startTrackingHostTime(host, activeTab.id);
-                  recordActivation(host); // Record activation when window gains focus
+                  // Added await and check for blocked status
+                  const blocked = await checkAndBlockIfNeeded(activeTab.id, host, activeTab.url);
+                  if (!blocked) { // Only start tracking if not blocked
+                    startTrackingHostTime(host, activeTab.id);
+                    recordActivation(host); // Record activation when window gains focus
+                  }
                 }
               }
             }
@@ -158,15 +161,16 @@ const DEFAULT_RULES = {
   
     // Iniciar/Reanudar timer para la nueva pestaña activa
     chrome.tabs.get(activeInfo.tabId, async (tab) => {
-      if (tab && tab.url && isBrowserFocused) {
+      if (tab && tab.url) { // Removed isBrowserFocused check here
         const host = getHostFromUrl(tab.url);
         if (host) {
-          const { rules } = await chrome.storage.local.get("rules");
-          const siteRule = (rules || DEFAULT_RULES)[host];
-          const timeRangesDetails = siteRule && siteRule.timeRanges ? `, Time Ranges: ${JSON.stringify(siteRule.timeRanges)}` : '';
-          console.log(`[onActivated] Checking and potentially blocking tab ID: ${tab.id}, Host: ${host}, URL: ${tab.url}${timeRangesDetails}`);
+          // Moved checkAndBlockIfNeeded to the beginning
           const blocked = await checkAndBlockIfNeeded(tab.id, host, tab.url);
           if (!blocked) {
+            const { rules } = await chrome.storage.local.get("rules");
+            const siteRule = (rules || DEFAULT_RULES)[host];
+            const timeRangesDetails = siteRule && siteRule.timeRanges ? `, Time Ranges: ${JSON.stringify(siteRule.timeRanges)}` : '';
+            console.log(`[onActivated] Checking and potentially blocking tab ID: ${tab.id}, Host: ${host}, URL: ${tab.url}${timeRangesDetails}`);
             startTrackingHostTime(host, tab.id);
           } else {
             console.log(`[onActivated] Tab ID: ${tab.id}, Host: ${host} was blocked.`);
