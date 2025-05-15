@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Política de Privacidad - TimeWard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans leading-normal p-6">
+
+    <div class="container mx-auto bg-white p-8 rounded-lg shadow-md">
+        <h1 class="text-3xl font-bold mb-6 text-center text-blue-600">Política de Privacidad de TimeWard</h1>
+
+        <p class="mb-4">Esta Política de Privacidad describe cómo la extensión de navegador TimeWard ("la Extensión") recopila, utiliza y almacena su información. Su privacidad es importante para nosotros.</p>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">1. Información que Recopilamos</h2>
+        <p class="mb-4">La Extensión está diseñada para ayudarle a gestionar su tiempo en línea. Para lograr esto, recopila y almacena la siguiente información localmente en su navegador:</p>
+        <ul class="list-disc list-inside mb-4 ml-4">
+            <li><strong>Historial de Visitas a Sitios Web:</strong> Registramos las URLs de las pestañas que visita mientras la Extensión está activa.</li>
+            <li><strong>Tiempo de Uso:</strong> Rastreamos el tiempo que pasa en sitios web específicos para aplicar las reglas que usted configure.</li>
+            <li><strong>Reglas de Configuración:</strong> Almacenamos las reglas que usted define para los sitios web (límites de tiempo, rangos horarios, modo irrestricto).</li>
+            <li><strong>Datos de Uso Agregados:</strong> Mantenemos un registro del tiempo total pasado y el número de activaciones (cambios de foco a una pestaña con un sitio web trackeado) por sitio web por día.</li>
+            <li><strong>Contraseña de Configuración (Opcional):</strong> Si decide proteger la configuración de la Extensión con una contraseña, esta se almacena de forma segura (aunque no cifrada) en el almacenamiento sincronizado de su navegador.</li>
+        </ul>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">2. Cómo Utilizamos su Información</h2>
+        <p class="mb-4">La información recopilada se utiliza exclusivamente para los siguientes propósitos dentro de la Extensión:</p>
+        <ul class="list-disc list-inside mb-4 ml-4">
+            <li>Para aplicar las reglas de tiempo y bloqueo que usted ha configurado.</li>
+            <li>Para mostrarle estadísticas de uso de sitios web en la página de opciones.</li>
+            <li>Para permitirle revisar su historial de visitas (registrado para el día actual).</li>
+            <li>Para proteger el acceso a la configuración de la Extensión si ha establecido una contraseña.</li>
+        </ul>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">3. Almacenamiento de Datos</h2>
+        <p class="mb-4">Toda la información recopilada por la Extensión se almacena <strong>localmente en el almacenamiento de su navegador</strong> (utilizando <code>chrome.storage.local</code> y <code>chrome.storage.sync</code> para la contraseña). Esto significa que sus datos:</p>
+        <ul class="list-disc list-inside mb-4 ml-4">
+            <li><strong>Nunca se envían a servidores externos.</strong></li>
+            <li><strong>No son accesibles para el desarrollador de la Extensión ni para terceros.</strong></li>
+            <li>Están vinculados a su perfil de navegador y pueden ser eliminados si desinstala la Extensión o borra los datos de navegación de su navegador.</li>
+        </ul>
+        <p class="mb-4">Los datos de uso diario y el historial de pestañas visitadas se almacenan con claves específicas de fecha y se gestionan para evitar un crecimiento excesivo, aunque la Extensión no implementa una política de retención a largo plazo automática más allá del reseteo diario de ciertos datos.</p>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">4. Compartir su Información</h2>
+        <p class="mb-4">La Extensión <strong>no comparte</strong> ninguna de la información recopilada con terceros. Sus datos permanecen exclusivamente en su navegador.</p>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">5. Gestión y Eliminación de Datos</h2>
+        <p class="mb-4">Usted tiene control sobre sus datos:</p>
+        <ul class="list-disc list-inside mb-4 ml-4">
+            <li>Puede ver y modificar las reglas de los sitios web a través de la página de opciones de la Extensión.</li>
+            <li>Puede ver estadísticas de uso y activaciones en la página de opciones.</li>
+            <li>Puede borrar todos los datos de uso y pestañas visitadas a través de un botón en la página de opciones.</li>
+            <li>Desinstalar la Extensión generalmente eliminará todos los datos almacenados localmente por la misma (excepto posiblemente la contraseña almacenada en <code>chrome.storage.sync</code>, que puede requerir borrar los datos sincronizados del navegador).</li>
+        </ul>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">6. Contraseña de Configuración</h2>
+        <p class="mb-4">La función de contraseña es una capa de seguridad opcional para evitar cambios no autorizados en la configuración de la Extensión por parte de otros usuarios de su navegador. La contraseña se almacena en el almacenamiento sincronizado de su navegador, lo que significa que puede estar disponible en otros dispositivos donde haya iniciado sesión con su cuenta de Google y la sincronización esté activada. Aunque se almacena de forma segura por el navegador, no se aplica cifrado adicional por parte de la Extensión.</p>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">7. Cambios a Esta Política de Privacidad</h2>
+        <p class="mb-4">Podemos actualizar nuestra Política de Privacidad de vez en cuando. Le notificaremos cualquier cambio publicando la nueva Política de Privacidad en esta página. Se recomienda revisar esta Política de Privacidad periódicamente para cualquier cambio.</p>
+
+        <h2 class="text-2xl font-semibold mb-4 text-blue-500">8. Contacto</h2>
+        <p class="mb-4">Si tiene alguna pregunta sobre esta Política de Privacidad, por favor contacte al desarrollador a través de la página de la Extensión en la Chrome Web Store.</p>
+
+        <p class="text-sm text-gray-600 text-center mt-8">Última actualización: 15 de Mayo de 2025</p>
+    </div>
+
+</body>
+</html>

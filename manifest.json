@@ -3,7 +3,6 @@
   "name": "Timeward",
   "version": "1.0.0",
   "description": "Monitoriza y limita el tiempo de acceso a sitios web.",
-  "update_url": "https://jmmaldonado.github.io/timeward/updates.xml",
   "permissions": [
     "tabs",
     "storage",
