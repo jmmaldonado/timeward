@@ -314,7 +314,7 @@ const DEFAULT_RULES = {
   
   async function pauseTrackingHostTime(host, pauseTime) {
     // console.log(`[pauseTrackingHostTime] host: ${host}, pauseTime: ${pauseTime}`);
-    if (siteTimers[host] && siteTimers[host].intervalId && siteTimers[host].lastFocusTime) {
+    if (siteTimers && siteTimers[host] && siteTimers[host].intervalId && siteTimers[host].lastFocusTime) {
       const elapsedSeconds = Math.round((pauseTime - siteTimers[host].lastFocusTime) / 1000);
       if (elapsedSeconds > 0) {
         await recordTimeSpent(host, elapsedSeconds);
