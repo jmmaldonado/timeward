@@ -15,8 +15,12 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
     const activationsTableContainer = document.getElementById('activationsTableContainer');
     const activationDateInput = document.getElementById('activationDate');
     const timeResolutionSelect = document.getElementById('timeResolution');
-    const ruleTypeWeekdayRadio = document.getElementById('ruleTypeWeekday');
-    const ruleTypeWeekendRadio = document.getElementById('ruleTypeWeekend');
+    // Rule type selection buttons (new)
+    const ruleTypeWeekdayButton = document.getElementById('ruleTypeWeekdayButton');
+    const ruleTypeWeekendButton = document.getElementById('ruleTypeWeekendButton');
+    const ruleTypeButtons = [ruleTypeWeekdayButton, ruleTypeWeekendButton].filter(Boolean);
+    let currentSelectedRuleType = 'weekday'; // Default
+
     const clearTrackingDataButton = document.getElementById('clearTrackingData');
 
     // Password related elements
@@ -301,7 +305,9 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
     // Function to update form limits based on selected rule type (weekday/weekend)
     function updateFormLimitsBasedOnRuleType() {
         const hostname = hostnameInput.value.trim().toLowerCase();
-        const selectedRuleType = ruleTypeWeekdayRadio.checked ? 'weekday' : 'weekend';
+        // const selectedRuleType = ruleTypeWeekdayRadio.checked ? 'weekday' : 'weekend'; // Old way
+        const selectedRuleType = currentSelectedRuleType;
+
 
         chrome.storage.local.get('rules', (result) => {
             const allRules = result.rules || {};
@@ -344,7 +350,9 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
             }
             limitsSection.style.display = unrestrictedCheckbox.checked ? 'none' : 'block';
             
-            ruleTypeWeekdayRadio.checked = true; // Default to showing weekday settings first
+            // ruleTypeWeekdayRadio.checked = true; // Old way
+            currentSelectedRuleType = 'weekday'; // Default to showing weekday settings first
+            updateRuleTypeButtonStyles();
             updateFormLimitsBasedOnRuleType(); // Load the weekday settings
         });
 
@@ -361,14 +369,45 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
         hostnameInput.value = '';
         unrestrictedCheckbox.checked = false;
         limitsSection.style.display = 'block';
-        ruleTypeWeekdayRadio.checked = true; // Default to weekday
+        // ruleTypeWeekdayRadio.checked = true; // Old way
+        currentSelectedRuleType = 'weekday'; // Default to weekday
+        updateRuleTypeButtonStyles();
         // dailyLimitInput and timeRangesContainer will be cleared by updateFormLimitsBasedOnRuleType
         updateFormLimitsBasedOnRuleType(); 
     }
 
     // Event Listeners for form controls
-    ruleTypeWeekdayRadio.addEventListener('change', updateFormLimitsBasedOnRuleType);
-    ruleTypeWeekendRadio.addEventListener('change', updateFormLimitsBasedOnRuleType);
+    // ruleTypeWeekdayRadio.addEventListener('change', updateFormLimitsBasedOnRuleType); // Old
+    // ruleTypeWeekendRadio.addEventListener('change', updateFormLimitsBasedOnRuleType); // Old
+
+    function updateRuleTypeButtonStyles() {
+        ruleTypeButtons.forEach(button => {
+            if (button) {
+                const isSelected = button.dataset.ruletype === currentSelectedRuleType;
+                button.classList.toggle('bg-blue-500', isSelected);
+                button.classList.toggle('text-white', isSelected);
+                button.classList.toggle('border-blue-500', isSelected);
+                button.classList.toggle('hover:bg-blue-600', isSelected);
+
+                button.classList.toggle('bg-white', !isSelected);
+                button.classList.toggle('text-gray-700', !isSelected);
+                button.classList.toggle('border-gray-300', !isSelected);
+                button.classList.toggle('hover:bg-gray-50', !isSelected);
+            }
+        });
+    }
+
+    ruleTypeButtons.forEach(button => {
+        if (button) {
+            button.addEventListener('click', () => {
+                if (!isUnlocked) return;
+                currentSelectedRuleType = button.dataset.ruletype;
+                updateRuleTypeButtonStyles();
+                updateFormLimitsBasedOnRuleType();
+            });
+        }
+    });
+
 
     unrestrictedCheckbox.addEventListener('change', () => {
         limitsSection.style.display = unrestrictedCheckbox.checked ? 'none' : 'block';
@@ -437,7 +476,8 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
              return; // Stop saving if any time range was invalid
         }
 
-        const ruleType = document.querySelector('input[name="ruleType"]:checked').value; // 'weekday' or 'weekend'
+        // const ruleType = document.querySelector('input[name="ruleType"]:checked').value; // Old way
+        const ruleType = currentSelectedRuleType;
 
         const { rules } = await chrome.storage.local.get('rules');
         let currentRules = rules || {};
