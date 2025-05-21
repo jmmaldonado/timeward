@@ -1,24 +1,61 @@
 // background.js - Service Worker para Manifest V3
 
+// Formato de datos para las reglas de control de sitios (almacenado en chrome.storage.local bajo la clave 'rules'):
+// {
+//   "hostname.com": {
+//     "unrestricted": true, // Opcional: si es true, no se aplican otros límites para este sitio.
+//     "weekday": { // Reglas para Lunes a Viernes
+//       "dailyLimitMinutes": 60, // Opcional: Límite diario total para este sitio en días de semana.
+//       "timeRanges": [ // Opcional: Array de franjas horarias permitidas.
+//         {
+//           "startTime": "09:00", // Hora de inicio de la franja.
+//           "endTime": "12:00",   // Hora de fin de la franja.
+//           "limitMinutes": 30    // Opcional: Límite específico para esta franja horaria.
+//         },
+//         // ... más franjas horarias para días de semana.
+//       ]
+//     },
+//     "weekend": { // Reglas para Sábado y Domingo (estructura idéntica a "weekday")
+//       "dailyLimitMinutes": 120,
+//       "timeRanges": [
+//         {
+//           "startTime": "10:00",
+//           "endTime": "22:00"
+//         }
+//         // ... más franjas horarias para fines de semana.
+//       ]
+//     }
+//   },
+//   // ... más sitios web.
+// }
+//
+// Adicionalmente, existe una clave 'globalLimits' en chrome.storage.local para los límites diarios globales:
+// {
+//   "globalLimits": {
+//     "weekday": 120, // Límite total de minutos para TODOS los sitios en un día de semana.
+//     "weekend": 180  // Límite total de minutos para TODOS los sitios en un fin de semana.
+//   }
+// }
+
 // Valores por defecto para las reglas y el uso
 const DEFAULT_RULES = {
     // Ejemplo: "walinwa.net": { unrestricted: true },
     // "youtube.com": { dailyLimitMinutes: 30, startTime: "08:00", endTime: "20:00" },
     // "lichess.org": { dailyLimitMinutes: 60, startTime: "08:00", endTime: "20:00" }
   };
-  
+
   const DEFAULT_USAGE = {}; // Usage data will be stored under date-specific keys (usageYYYY-MM-DD)
-  
+
   const DEFAULT_VISITED_TABS = {
     // Ejemplo: "2025-05-10": ["url1", "url2"]
   };
-  
+
   let siteTimers = {}; // Almacena los temporizadores activos: { "hostname": { intervalId: null, activeTabId: null, lastFocusTime: null } }
   let lastKnownActiveTabId = null;
   let lastKnownWindowId = null;
   let isBrowserFocused = true;
-  
-  
+
+
   // --- Inicialización y Alarmas ---
   chrome.runtime.onInstalled.addListener(async () => {
     // console.log("Extensión instalada/actualizada.");
@@ -36,13 +73,13 @@ const DEFAULT_RULES = {
         // console.log("Datos de pestañas visitadas por defecto establecidos.");
       }
     });
-  
+
     // Alarma para resetear el uso diario a medianoche
     chrome.alarms.create("dailyReset", {
       when: getNextMidnight(),
       periodInMinutes: 24 * 60 // Repetir cada 24 horas
     });
-  
+
     // Alarma para guardar periódicamente el tiempo y verificar límites (cada minuto)
     chrome.alarms.create("periodicCheck", {
       delayInMinutes: 1,
@@ -50,7 +87,7 @@ const DEFAULT_RULES = {
     });
     // console.log("Alarmas creadas: dailyReset y periodicCheck.");
   });
-  
+
   function getNextMidnight() {
     const now = new Date();
     const nextMidnight = new Date(
@@ -62,7 +99,7 @@ const DEFAULT_RULES = {
     // console.log("Próximo reseteo diario:", nextMidnight.toLocaleString());
     return nextMidnight.getTime();
   }
-  
+
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     // console.log("Alarma disparada:", alarm.name);
     if (alarm.name === "dailyReset") {
@@ -72,7 +109,7 @@ const DEFAULT_RULES = {
       await checkAllTabsForBlocking();
     }
   });
-  
+
   async function resetDailyUsage() {
     // console.log("Reseteando datos de uso diario y pestañas visitadas...");
     const yesterday = new Date();
@@ -92,7 +129,7 @@ const DEFAULT_RULES = {
     siteTimers = {};
     // console.log("Datos de uso diario y pestañas visitadas reseteados.");
   }
-  
+
   // --- Seguimiento del Foco del Navegador ---
   chrome.windows.onFocusChanged.addListener(async (windowId) => { // Added async here
     isBrowserFocused = windowId !== chrome.windows.WINDOW_ID_NONE;
@@ -132,8 +169,8 @@ const DEFAULT_RULES = {
       }
     }
   });
-  
-  
+
+
   // --- Seguimiento de Pestañas ---
   chrome.tabs.onActivated.addListener(async (activeInfo) => {
     // console.log(`Pestaña activada. Nueva pestaña ID: ${activeInfo.tabId}, Ventana ID: ${activeInfo.windowId}`);
@@ -158,7 +195,7 @@ const DEFAULT_RULES = {
         pauseTrackingHostTime(host, Date.now());
       }
     }
-  
+
     // Iniciar/Reanudar timer para la nueva pestaña activa
     chrome.tabs.get(activeInfo.tabId, async (tab) => {
       if (tab && tab.url) { // Removed isBrowserFocused check here
@@ -179,7 +216,7 @@ const DEFAULT_RULES = {
       }
     });
   });
-  
+
   chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     // Interesa 'complete' para asegurar que la URL es la final
     if (changeInfo.status === 'complete' && tab.url) {
@@ -210,7 +247,7 @@ const DEFAULT_RULES = {
       }
     }
   });
-  
+
   chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     // console.log("Pestaña eliminada:", tabId);
     // Si la pestaña eliminada era la que estaba siendo trackeada, detener su timer
@@ -225,8 +262,8 @@ const DEFAULT_RULES = {
       lastKnownActiveTabId = null;
     }
   });
-  
-  
+
+
   // --- Lógica de Tracking de Tiempo ---
   function getHostFromUrl(urlString) {
     try {
@@ -249,7 +286,7 @@ const DEFAULT_RULES = {
     }
     return null;
   }
-  
+
   async function recordVisitedTab(urlString) {
     if (!urlString) return;
 
@@ -279,14 +316,14 @@ const DEFAULT_RULES = {
       // console.warn("URL inválida al intentar registrar pestaña visitada:", urlString, e);
     }
   }
-  
+
   async function startTrackingHostTime(host, tabId) {
     // console.log(`[startTrackingHostTime] host: ${host}, tabId: ${tabId}, isBrowserFocused: ${isBrowserFocused}`);
     if (!host || !isBrowserFocused) return;
-  
+
     const { rules } = await chrome.storage.local.get("rules");
     const siteRule = (rules || DEFAULT_RULES)[host];
-  
+
     if (siteRule && siteRule.unrestricted) {
       // console.log(`Sitio ${host} es irrestricto. No se trackea.`);
       // Asegurarse de que no haya un timer activo para este host
@@ -295,7 +332,7 @@ const DEFAULT_RULES = {
       }
       return;
     }
-  
+
     if (!siteTimers[host] || !siteTimers[host].intervalId) {
       // console.log(`Iniciando/Reanudando tracking para ${host} en pestaña ${tabId}`);
       siteTimers[host] = {
@@ -311,7 +348,7 @@ const DEFAULT_RULES = {
       // console.log(`Actualizando lastFocusTime para ${host} en pestaña ${tabId}`);
     }
   }
-  
+
   async function pauseTrackingHostTime(host, pauseTime) {
     // console.log(`[pauseTrackingHostTime] host: ${host}, pauseTime: ${pauseTime}`);
     if (siteTimers && siteTimers[host] && siteTimers[host].intervalId && siteTimers[host].lastFocusTime) {
@@ -324,7 +361,7 @@ const DEFAULT_RULES = {
       siteTimers[host].lastFocusTime = null;
     }
   }
-  
+
   async function recordActivation(host) {
     if (!host) return;
 
@@ -353,37 +390,86 @@ const DEFAULT_RULES = {
   async function recordTimeSpent(host, seconds) {
     // console.log(`[recordTimeSpent] host: ${host}, seconds: ${seconds}`);
     if (!host || seconds <= 0) return;
-  
+
     const { rules } = await chrome.storage.local.get("rules");
     const siteRule = (rules || DEFAULT_RULES)[host];
-  
+
     // Solo registrar si hay una regla (incluso si no es de límite, para estadísticas) o si no es irrestricto
     if (siteRule && siteRule.unrestricted) {
         return; // No registrar tiempo para sitios irrestritos
     }
-  
+
     const today = new Date().toISOString().split('T')[0];
     const usageKeyToday = `usage${today}`;
 
     // Fetch today's usage data
     const usageTodayData = await chrome.storage.local.get(usageKeyToday);
     const currentUsageToday = usageTodayData[usageKeyToday] || {};
-  
+
     // Ensure the hostname entry exists for today
     if (!currentUsageToday[host]) {
       currentUsageToday[host] = { minutes: 0, seconds: 0, activationTimestamps: [] };
     }
 
-    // Add seconds and handle rollovers to minutes
+    // Add seconds to total daily usage
     currentUsageToday[host].seconds = (currentUsageToday[host].seconds || 0) + seconds;
     currentUsageToday[host].minutes = (currentUsageToday[host].minutes || 0) + Math.floor(currentUsageToday[host].seconds / 60);
     currentUsageToday[host].seconds %= 60;
 
+    // Determine the current time range and add seconds to range-specific usage
+    const now = new Date();
+    const currentTimeStr = now.toTimeString().substring(0, 5); // "HH:MM"
+    const todayDayOfWeek = now.getDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
+    const isWeekend = todayDayOfWeek === 0 || todayDayOfWeek === 6;
+    const ruleTypeToday = isWeekend ? 'weekend' : 'weekday';
+
+    const ruleToday = siteRule ? siteRule[ruleTypeToday] : null;
+
+    if (ruleToday && ruleToday.timeRanges && Array.isArray(ruleToday.timeRanges)) {
+        for (const range of ruleToday.timeRanges) {
+            if (range.startTime && range.endTime) {
+                // Check if current time is within this range
+                let isWithinRange = false;
+                if (range.startTime > range.endTime) { // Overnight range
+                    if (currentTimeStr >= range.startTime || currentTimeStr < range.endTime) {
+                        isWithinRange = true;
+                    }
+                } else { // Normal range
+                    if (currentTimeStr >= range.startTime && currentTimeStr < range.endTime) {
+                        isWithinRange = true;
+                    }
+                }
+
+                if (isWithinRange) {
+                    const rangeKey = `${range.startTime}-${range.endTime}`;
+                    if (!currentUsageToday[host].rangeUsage) {
+                        currentUsageToday[host].rangeUsage = {};
+                    }
+                    if (!currentUsageToday[host].rangeUsage[rangeKey]) {
+                        currentUsageToday[host].rangeUsage[rangeKey] = { minutes: 0, seconds: 0 };
+                    }
+
+                    // Add seconds to this specific range's usage
+                    currentUsageToday[host].rangeUsage[rangeKey].seconds = (currentUsageToday[host].rangeUsage[rangeKey].seconds || 0) + seconds;
+                    currentUsageToday[host].rangeUsage[rangeKey].minutes = (currentUsageToday[host].rangeUsage[rangeKey].minutes || 0) + Math.floor(currentUsageToday[host].rangeUsage[rangeKey].seconds / 60);
+                    currentUsageToday[host].rangeUsage[rangeKey].seconds %= 60;
+
+                    // Since time is recorded periodically (e.g., every minute), a single time segment
+                    // should ideally fall into only one range. If ranges overlap, this logic might need refinement.
+                    // For now, we assume non-overlapping ranges for simplicity in recording.
+                    break; // Assume time falls into the first matching range
+                }
+            }
+        }
+    }
+
+
     // Save the updated object back to the date-specific key
     await chrome.storage.local.set({ [usageKeyToday]: currentUsageToday });
     // console.log(`Registrados ${seconds}s para ${host}. Total hoy: ${currentUsageToday[host].minutes} min, ${currentUsageToday[host].seconds} s.`);
+    // console.log(`Uso por rango para ${host}:`, currentUsageToday[host].rangeUsage);
   }
-  
+
   async function processActiveTabTime() {
     // console.log("Procesando tiempo de pestaña activa (periodicCheck)...");
     let activeHostProcessed = false;
@@ -397,12 +483,12 @@ const DEFAULT_RULES = {
           siteTimers[host].lastFocusTime = now; // Resetear para el próximo intervalo
         }
         activeHostProcessed = true;
-        break; // Solo puede haber un host activo a la vez
+        break; // Only one host can be active at a time
       }
     }
     if (!activeHostProcessed && lastKnownActiveTabId && isBrowserFocused) {
-      // Si el navegador está enfocado y hay una pestaña activa, pero no se procesó un timer,
-      // podría ser una nueva pestaña/URL que necesita iniciar su tracking.
+      // If the browser is focused and there's an active tab, but no timer was processed,
+      // it might be a new tab/URL that needs its tracking started.
       chrome.tabs.get(lastKnownActiveTabId, (tab) => {
           if (tab && tab.url) {
               const host = getHostFromUrl(tab.url);
@@ -410,34 +496,55 @@ const DEFAULT_RULES = {
           }
       });
     }
+
+    // Check and clear temporary disable if expired during this periodic check
+    const { temporaryDisableEndTime } = await chrome.storage.local.get('temporaryDisableEndTime');
+    const now = Date.now();
+    if (temporaryDisableEndTime && now >= temporaryDisableEndTime) {
+        await chrome.storage.local.remove('temporaryDisableEndTime');
+        // console.log("Temporary disable expired and cleared during periodic check.");
+    }
   }
-  
-  
+
+
   // --- Lógica de Bloqueo ---
   async function checkAndBlockIfNeeded(tabId, host, urlToBlock) {
     if (!host) return false; // Cannot block without a host
 
-    // 1. Get Operation Mode
+    // 1. Check for Temporary Disable
+    const { temporaryDisableEndTime } = await chrome.storage.local.get('temporaryDisableEndTime');
+    const now = Date.now();
+    if (temporaryDisableEndTime && now < temporaryDisableEndTime) {
+        // console.log(`[Temporary Disable Active] Allowing ${host} (ID: ${tabId}). Disable ends at ${new Date(temporaryDisableEndTime).toLocaleString()}`);
+        return false; // Extension is temporarily disabled, allow navigation
+    } else if (temporaryDisableEndTime && now >= temporaryDisableEndTime) {
+        // Temporary disable has expired, clear it from storage
+        await chrome.storage.local.remove('temporaryDisableEndTime');
+        // console.log("Temporary disable expired and cleared.");
+    }
+
+
+    // 2. Get Operation Mode
     const { operationMode: mode } = await chrome.storage.local.get({ operationMode: 'permissive' }); // Default to permissive
 
-    // 2. Monitoring Mode: Never block
+    // 3. Monitoring Mode: Never block
     if (mode === 'monitoring') {
         // console.log(`[Mode: Monitoring] Allowing ${host} (monitoring mode).`);
         return false;
     }
 
-    // 3. Get Rules
+    // 4. Get Rules
     const { rules } = await chrome.storage.local.get("rules");
     const siteRules = (rules || DEFAULT_RULES)[host];
 
-    // 4. Strict Mode: Block if no rule exists
+    // 5. Strict Mode: Block if no rule exists
     if (mode === 'strict' && !siteRules) {
         // console.log(`[Mode: Strict] BLOCKING ${host} (ID: ${tabId}) because no rule exists.`);
         await blockTab(tabId, host, urlToBlock, `Bloqueado por modo Estricto (sin regla definida).`);
         return true; // Blocked
     }
 
-    // 5. Permissive Mode: Allow if no rule exists (or if unrestricted)
+    // 6. Permissive Mode: Allow if no rule exists (or if unrestricted)
     // Also handles unrestricted case for Strict mode
     if (!siteRules || siteRules.unrestricted) {
         // console.log(`[Mode: ${mode}] Allowing ${host} (no rule/unrestricted).`);
@@ -447,10 +554,10 @@ const DEFAULT_RULES = {
     // --- Rule exists and is not unrestricted ---
     // The following checks apply to both Permissive and Strict modes when a specific rule is found.
 
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const currentTimeStr = now.toTimeString().substring(0, 5); // "HH:MM"
-    const todayDayOfWeek = now.getDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const currentTimeStr = today.toTimeString().substring(0, 5); // "HH:MM"
+    const todayDayOfWeek = today.getDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
     const isWeekend = todayDayOfWeek === 0 || todayDayOfWeek === 6;
     const ruleTypeToday = isWeekend ? 'weekend' : 'weekday';
 
@@ -470,10 +577,13 @@ const DEFAULT_RULES = {
 
     // --- Rule for today exists ---
 
-    // 6. Check Time Ranges
-    let isWithinAllowedTime = true; // Assume allowed if no ranges are defined
+    // 7. Check Time Ranges and Per-Range Limits
+    let isWithinAllowedTime = false; // Assume not allowed if ranges are defined
+    let currentRangeLimit = null;
+    let currentRange = null;
+    let currentRangeKey = null;
+
     if (ruleToday.timeRanges && Array.isArray(ruleToday.timeRanges) && ruleToday.timeRanges.length > 0) {
-        isWithinAllowedTime = false; // Requires explicit match if ranges exist
         // console.log(`Checking time ranges for ${host} (${ruleTypeToday}):`, ruleToday.timeRanges);
         for (const range of ruleToday.timeRanges) {
             if (range.startTime && range.endTime) {
@@ -481,11 +591,17 @@ const DEFAULT_RULES = {
                 if (range.startTime > range.endTime) {
                     if (currentTimeStr >= range.startTime || currentTimeStr < range.endTime) {
                         isWithinAllowedTime = true;
+                        currentRangeLimit = range.limitMinutes;
+                        currentRange = range;
+                        currentRangeKey = `${range.startTime}-${range.endTime}`;
                         break;
                     }
                 } else { // Normal range (e.g., 08:00 - 18:00)
                     if (currentTimeStr >= range.startTime && currentTimeStr < range.endTime) {
                         isWithinAllowedTime = true;
+                        currentRangeLimit = range.limitMinutes;
+                        currentRange = range;
+                        currentRangeKey = `${range.startTime}-${range.endTime}`;
                         break;
                     }
                 }
@@ -496,32 +612,75 @@ const DEFAULT_RULES = {
             await blockTab(tabId, host, urlToBlock, `Fuera de los horarios permitidos para ${ruleTypeToday}.`);
             return true; // Blocked (Applies to both Permissive and Strict)
         }
+    } else {
+        // No time ranges defined, assume allowed all day within the rule's context
+        isWithinAllowedTime = true;
+        // If no time ranges, the daily limit is the only time-based restriction
+        currentRangeLimit = null; // No specific range limit
+        currentRange = null;
+        currentRangeKey = null;
     }
 
-    // 7. Check Daily Limit
+    // If within allowed time (or no ranges defined), check limits
+
     const usageKeyToday = `usage${todayStr}`;
     const usageTodayData = await chrome.storage.local.get(usageKeyToday);
     const currentUsageToday = usageTodayData[usageKeyToday] || {};
-    const usedToday = currentUsageToday[host] || { minutes: 0, seconds: 0, activationTimestamps: [] };
+    const usedToday = currentUsageToday[host] || { minutes: 0, seconds: 0, activationTimestamps: [], rangeUsage: {} }; // Ensure rangeUsage exists
 
-    let currentSessionSeconds = 0;
-    if (siteTimers[host] && siteTimers[host].intervalId && siteTimers[host].lastFocusTime) {
-        currentSessionSeconds = Math.round((Date.now() - siteTimers[host].lastFocusTime) / 1000);
+    // 8. Check Per-Range Limit (if within a range and limit is defined)
+    if (isWithinAllowedTime && currentRange && currentRangeKey && currentRangeLimit !== null && currentRangeLimit !== undefined) {
+        const rangeUsage = usedToday.rangeUsage && usedToday.rangeUsage[currentRangeKey] ? usedToday.rangeUsage[currentRangeKey] : { minutes: 0, seconds: 0 };
+        const timeSpentInCurrentRangeMinutes = rangeUsage.minutes + Math.floor(rangeUsage.seconds / 60);
+
+        // console.log(`[Mode: ${mode}] Host: ${host} (${ruleTypeToday}), Current Range: ${currentRangeKey}, Range Limit: ${currentRangeLimit} min, Used in Range Today: ${timeSpentInCurrentRangeMinutes} min`);
+
+        if (timeSpentInCurrentRangeMinutes >= currentRangeLimit) {
+            // console.log(`[Mode: ${mode}] BLOCKING ${host} (ID: ${tabId}) due to exceeded per-range time limit (${timeSpentInCurrentRangeMinutes}min / ${currentRangeLimit}min) for range ${currentRangeKey}.`);
+            await blockTab(tabId, host, urlToBlock, `Límite de tiempo (${currentRangeLimit} min) alcanzado para el horario ${currentRangeKey} (${ruleTypeToday}).`);
+            return true; // Blocked
+        }
     }
 
-    let totalSecondsConsidered = (usedToday.minutes * 60) + usedToday.seconds + currentSessionSeconds;
-    let totalMinutesConsidered = Math.floor(totalSecondsConsidered / 60);
+    // 9. Check Overall Daily Limit (if defined)
+    const totalSecondsToday = (usedToday.minutes * 60) + usedToday.seconds;
+    const totalMinutesToday = Math.floor(totalSecondsToday / 60);
 
-    // console.log(`[Mode: ${mode}] Host: ${host} (${ruleTypeToday}), Daily Limit: ${ruleToday.dailyLimitMinutes} min, Used Today (considered): ${totalMinutesConsidered} min`);
-
-    if (ruleToday.dailyLimitMinutes !== null && ruleToday.dailyLimitMinutes !== undefined && totalMinutesConsidered >= ruleToday.dailyLimitMinutes) {
-        // console.log(`[Mode: ${mode}] BLOCKING ${host} (ID: ${tabId}) due to exceeded daily time limit (${totalMinutesConsidered}min / ${ruleToday.dailyLimitMinutes}min) for ${ruleTypeToday}.`);
-        await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario (${ruleToday.dailyLimitMinutes} min) alcanzado para ${ruleTypeToday}.`);
-        return true; // Blocked (Applies to both Permissive and Strict)
+    if (ruleToday.dailyLimitMinutes !== null && ruleToday.dailyLimitMinutes !== undefined && totalMinutesToday >= ruleToday.dailyLimitMinutes) {
+        // console.log(`[Mode: ${mode}] BLOCKING ${host} (ID: ${tabId}) due to exceeded overall daily time limit (${totalMinutesToday}min / ${ruleToday.dailyLimitMinutes}min) for ${ruleTypeToday}.`);
+        await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario total (${ruleToday.dailyLimitMinutes} min) alcanzado para ${ruleTypeToday} en ${host}.`);
+        return true; // Blocked
     }
 
-    // 8. If all checks passed, allow
-    // console.log(`[Mode: ${mode}] Allowing ${host} (within limits/time ranges).`);
+    // --- Global Daily Limit Check ---
+    // This check happens only if the site was not blocked by specific rules above.
+    const { globalLimits } = await chrome.storage.local.get('globalLimits');
+    if (globalLimits) {
+        const globalLimitForTodayType = isWeekend ? globalLimits.weekend : globalLimits.weekday;
+
+        if (globalLimitForTodayType !== null && globalLimitForTodayType !== undefined) {
+            // Calculate total time spent across ALL sites today
+            let totalTimeAcrossAllSitesMinutes = 0;
+            for (const siteHost in currentUsageToday) {
+                if (Object.hasOwnProperty.call(currentUsageToday, siteHost)) {
+                    const siteUsage = currentUsageToday[siteHost];
+                    totalTimeAcrossAllSitesMinutes += siteUsage.minutes || 0;
+                    totalTimeAcrossAllSitesMinutes += Math.floor((siteUsage.seconds || 0) / 60);
+                }
+            }
+
+            // console.log(`[Global Limit Check] Host: ${host}, Global Limit (${ruleTypeToday}): ${globalLimitForTodayType} min, Total Used Today (All Sites): ${totalTimeAcrossAllSitesMinutes} min`);
+
+            if (totalTimeAcrossAllSitesMinutes >= globalLimitForTodayType) {
+                // console.log(`[Mode: ${mode}] BLOCKING ${host} (ID: ${tabId}) due to exceeded GLOBAL daily time limit (${totalTimeAcrossAllSitesMinutes}min / ${globalLimitForTodayType}min) for ${ruleTypeToday}.`);
+                await blockTab(tabId, host, urlToBlock, `Límite de tiempo diario GLOBAL (${globalLimitForTodayType} min) alcanzado para ${ruleTypeToday}.`);
+                return true; // Blocked
+            }
+        }
+    }
+
+    // 10. If all checks passed (including global), allow
+    // console.log(`[Mode: ${mode}] Allowing ${host} (within specific and global limits/time ranges).`);
     return false; // Not blocked
   }
 
@@ -560,13 +719,14 @@ const DEFAULT_RULES = {
   
   // Escuchar cambios en las reglas desde la página de opciones
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === "rulesChanged") {
-      // console.log("Reglas cambiadas, re-evaluando pestañas abiertas.");
+    if (message.type === "rulesChanged" || message.type === "globalLimitsChanged") {
+      // console.log(`${message.type} detectado, re-evaluando pestañas abiertas.`);
       checkAllTabsForBlocking();
-      // También es buena idea recargar las reglas en los timers activos
-      // o simplemente resetearlos para que se adapten a las nuevas reglas.
-      // Por simplicidad, un checkAllTabsForBlocking puede ser suficiente inicialmente.
-      sendResponse({status: "Reglas actualizadas, pestañas verificadas."});
+      sendResponse({status: `${message.type} procesado, pestañas verificadas.`});
+    } else if (message.type === "temporaryDisableActivated") {
+        // console.log("Temporary disable activated, re-evaluating tabs.");
+        checkAllTabsForBlocking(); // Re-check tabs, some might become unblocked
+        sendResponse({status: "Temporary disable processed."});
     }
     return true; // Indica que la respuesta será asíncrona
   });

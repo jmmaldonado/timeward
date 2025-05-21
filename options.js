@@ -37,6 +37,18 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
     const modePermissiveRadio = document.getElementById('modePermissive');
     const modeStrictRadio = document.getElementById('modeStrict');
 
+    // Temporary Disable elements
+    const disableDurationInput = document.getElementById('disableDuration');
+    const activateDisableButton = document.getElementById('activateDisableButton');
+    const disableStatusP = document.getElementById('disableStatus');
+
+    // Global Daily Limits elements
+    const globalDailyLimitWeekdayInput = document.getElementById('globalDailyLimitWeekday');
+    const globalDailyLimitWeekendInput = document.getElementById('globalDailyLimitWeekend');
+    const saveGlobalLimitsButton = document.getElementById('saveGlobalLimitsButton');
+    const globalLimitsStatusP = document.getElementById('globalLimitsStatus');
+
+
     let isUnlocked = false; // State variable to track if config is accessible
 
     // --- Password Handling Functions ---
@@ -76,10 +88,92 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
         // Load rules and settings only after unlocking
         loadRules();
         loadOperationMode();
+        loadGlobalLimits(); // Load global limits
         initializeActivationsTable(); // Initialize or re-render activations table
     }
 
     // --- End Password Handling Functions ---
+
+
+    // --- Global Daily Limits Functions ---
+    async function saveGlobalLimits() {
+        if (!isUnlocked) {
+            globalLimitsStatusP.textContent = "Desbloquea la configuración para guardar.";
+            globalLimitsStatusP.style.color = 'red';
+            setTimeout(() => { globalLimitsStatusP.textContent = ''; }, 3000);
+            return;
+        }
+
+        const weekdayLimitValue = globalDailyLimitWeekdayInput.value.trim();
+        const weekendLimitValue = globalDailyLimitWeekendInput.value.trim();
+
+        const weekdayLimit = weekdayLimitValue === '' ? null : parseInt(weekdayLimitValue, 10);
+        const weekendLimit = weekendLimitValue === '' ? null : parseInt(weekendLimitValue, 10);
+
+        if ((weekdayLimit !== null && (isNaN(weekdayLimit) || weekdayLimit < 0)) ||
+            (weekendLimit !== null && (isNaN(weekendLimit) || weekendLimit < 0))) {
+            globalLimitsStatusP.textContent = "Los límites deben ser números positivos o dejarse vacíos.";
+            globalLimitsStatusP.style.color = 'red';
+            setTimeout(() => { globalLimitsStatusP.textContent = ''; }, 3000);
+            return;
+        }
+
+        const globalLimits = {
+            weekday: weekdayLimit,
+            weekend: weekendLimit
+        };
+
+        try {
+            await chrome.storage.local.set({ globalLimits: globalLimits });
+            globalLimitsStatusP.textContent = "Límites globales guardados con éxito.";
+            globalLimitsStatusP.style.color = 'green';
+            setTimeout(() => { globalLimitsStatusP.textContent = ''; }, 3000);
+            // Send message to background script if needed
+            chrome.runtime.sendMessage({ type: "globalLimitsChanged" }, (response) => {
+                if (chrome.runtime.lastError) { /* console.warn("Error sending globalLimitsChanged message:", chrome.runtime.lastError.message); */ }
+            });
+        } catch (error) {
+            console.error("Error saving global limits:", error);
+            globalLimitsStatusP.textContent = "Error al guardar los límites globales.";
+            globalLimitsStatusP.style.color = 'red';
+            setTimeout(() => { globalLimitsStatusP.textContent = ''; }, 3000);
+        }
+    }
+
+    async function loadGlobalLimits() {
+        if (!isUnlocked && globalDailyLimitWeekdayInput && globalDailyLimitWeekendInput) { // Check if elements exist
+             // Clear fields if locked or set to default, or simply do nothing
+            globalDailyLimitWeekdayInput.value = '';
+            globalDailyLimitWeekendInput.value = '';
+            return;
+        }
+        try {
+            const result = await chrome.storage.local.get('globalLimits');
+            const savedLimits = result.globalLimits;
+
+            if (savedLimits && globalDailyLimitWeekdayInput && globalDailyLimitWeekendInput) {
+                globalDailyLimitWeekdayInput.value = savedLimits.weekday !== null && savedLimits.weekday !== undefined ? savedLimits.weekday : '';
+                globalDailyLimitWeekendInput.value = savedLimits.weekend !== null && savedLimits.weekend !== undefined ? savedLimits.weekend : '';
+            } else if (globalDailyLimitWeekdayInput && globalDailyLimitWeekendInput) {
+                // No limits saved, ensure fields are empty or have placeholders
+                globalDailyLimitWeekdayInput.value = '';
+                globalDailyLimitWeekendInput.value = '';
+            }
+        } catch (error) {
+            console.error("Error loading global limits:", error);
+            if (globalLimitsStatusP) {
+                globalLimitsStatusP.textContent = "Error al cargar los límites globales.";
+                globalLimitsStatusP.style.color = 'red';
+                setTimeout(() => { globalLimitsStatusP.textContent = ''; }, 3000);
+            }
+        }
+    }
+
+    // Event listener for save global limits button
+    if (saveGlobalLimitsButton) {
+        saveGlobalLimitsButton.addEventListener('click', saveGlobalLimits);
+    }
+    // --- End Global Daily Limits Functions ---
 
 
     // Function to add a time range input group
@@ -91,10 +185,18 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
             <input type="time" class="start-time px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full">
             <span>hasta</span>
             <input type="time" class="end-time px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full">
+            <input type="number" class="limit-minutes px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full" placeholder="Límite (min)">
             <button type="button" class="remove-time-range px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm">X</button>
         `;
         timeRangeDiv.querySelector('.start-time').value = startTime;
         timeRangeDiv.querySelector('.end-time').value = endTime;
+        // Assuming limitMinutes is passed as a third argument now
+        if (arguments.length > 2 && arguments[2] !== null && arguments[2] !== undefined) {
+             timeRangeDiv.querySelector('.limit-minutes').value = arguments[2];
+        } else {
+             timeRangeDiv.querySelector('.limit-minutes').value = ''; // Ensure it's empty if null/undefined
+        }
+
         timeRangeDiv.querySelector('.remove-time-range').addEventListener('click', () => {
             timeRangeDiv.remove();
         });
@@ -108,18 +210,19 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
 
         chrome.storage.local.get('rules', (result) => {
             const allRules = result.rules || {};
-            const siteRule = allRules[hostname]; 
+            const siteRule = allRules[hostname];
 
-            dailyLimitInput.value = ''; 
+            dailyLimitInput.value = '';
             timeRangesContainer.innerHTML = '';
 
             if (siteRule && !siteRule.unrestricted && siteRule[selectedRuleType]) {
                 const specificRuleDetails = siteRule[selectedRuleType];
                 dailyLimitInput.value = specificRuleDetails.dailyLimitMinutes !== null && specificRuleDetails.dailyLimitMinutes !== undefined ? specificRuleDetails.dailyLimitMinutes : '';
-                
+
                 if (specificRuleDetails.timeRanges && Array.isArray(specificRuleDetails.timeRanges) && specificRuleDetails.timeRanges.length > 0) {
                     specificRuleDetails.timeRanges.forEach(range => {
-                        addTimeRangeInput(range.startTime, range.endTime);
+                        // Pass the limitMinutes when adding the input
+                        addTimeRangeInput(range.startTime, range.endTime, range.limitMinutes);
                     });
                 } else {
                      if (!unrestrictedCheckbox.checked) addTimeRangeInput(); // Add one empty if no ranges and not unrestricted
@@ -204,15 +307,40 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
         }
 
         const isUnrestricted = unrestrictedCheckbox.checked;
-        const dailyLimit = parseInt(dailyLimitInput.value, 10);
+        const dailyLimitValue = dailyLimitInput.value.trim();
+        const dailyLimit = dailyLimitValue === '' ? null : parseInt(dailyLimitValue, 10);
+
         const timeRanges = [];
+        let hasInvalidTimeRange = false;
         timeRangesContainer.querySelectorAll('.time-range-item').forEach(item => {
             const startTime = item.querySelector('.start-time').value;
             const endTime = item.querySelector('.end-time').value;
+            const limitMinutesValue = item.querySelector('.limit-minutes').value.trim();
+            const limitMinutes = limitMinutesValue === '' ? null : parseInt(limitMinutesValue, 10);
+
             if (startTime && endTime) {
-                timeRanges.push({ startTime, endTime });
+                 if (limitMinutes !== null && (isNaN(limitMinutes) || limitMinutes < 0)) {
+                     showStatus("El límite por rango debe ser un número positivo.", true);
+                     hasInvalidTimeRange = true;
+                     return; // Skip this range, but mark as invalid
+                 }
+                 if (startTime >= endTime) {
+                     showStatus("La hora de inicio debe ser anterior a la hora de fin en todos los rangos.", true);
+                     hasInvalidTimeRange = true;
+                     return; // Skip this range, but mark as invalid
+                 }
+                timeRanges.push({ startTime, endTime, limitMinutes });
+            } else if (startTime || endTime || limitMinutesValue !== '') {
+                 // If any part of the range is filled, but not both times
+                 showStatus("Todos los rangos de horario deben tener hora de inicio y fin.", true);
+                 hasInvalidTimeRange = true;
+                 return; // Skip this range, but mark as invalid
             }
         });
+
+        if (hasInvalidTimeRange) {
+             return; // Stop saving if any time range was invalid
+        }
 
         const ruleType = document.querySelector('input[name="ruleType"]:checked').value; // 'weekday' or 'weekend'
 
@@ -229,26 +357,15 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
             // Ensure weekday/weekend objects exist if we are setting specific rules
             if (!currentRules[hostname].weekday) currentRules[hostname].weekday = {};
             if (!currentRules[hostname].weekend) currentRules[hostname].weekend = {};
-            
-            // Validate dailyLimit only if not unrestricted
-            if (isNaN(dailyLimit) || dailyLimit < 0) {
+
+            // Validate dailyLimit only if not unrestricted and value is provided
+            if (dailyLimit !== null && (isNaN(dailyLimit) || dailyLimit < 0)) {
                 showStatus("El límite diario debe ser un número positivo.", true);
                 return;
             }
-            // Basic validation for time ranges
-            for (const range of timeRanges) {
-                if (!range.startTime || !range.endTime) {
-                     showStatus("Todos los rangos de horario deben tener hora de inicio y fin.", true);
-                     return;
-                }
-                if (range.startTime >= range.endTime) {
-                    showStatus("La hora de inicio debe ser anterior a la hora de fin en todos los rangos.", true);
-                    return;
-                }
-            }
 
             currentRules[hostname][ruleType] = {
-                dailyLimitMinutes: dailyLimit || null, // Store null if empty
+                dailyLimitMinutes: dailyLimit, // Store null if empty or invalid
                 timeRanges: timeRanges.length > 0 ? timeRanges : null // Store null if no ranges
             };
             // Remove unrestricted flag if it was set and now we are setting specific limits
@@ -259,7 +376,7 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
 
         await chrome.storage.local.set({ rules: currentRules });
         showStatus(`Regla para '${hostname}' guardada.`, false);
-        loadRules(); 
+        loadRules();
         clearInputFields();
 
         chrome.runtime.sendMessage({ type: "rulesChanged" }, (response) => {
@@ -350,11 +467,15 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
             if (rule.unrestricted) {
                 weekdayCell.textContent = 'Ilimitado';
             } else if (rule.weekday) {
-                const wdLimit = (rule.weekday.dailyLimitMinutes !== null && rule.weekday.dailyLimitMinutes !== undefined) ? `${rule.weekday.dailyLimitMinutes} min` : 'Sin límite diario';
-                const wdRanges = (rule.weekday.timeRanges && Array.isArray(rule.weekday.timeRanges) && rule.weekday.timeRanges.length > 0)
-                    ? rule.weekday.timeRanges.map(range => `${range.startTime || 'N/A'}-${range.endTime || 'N/A'}`).join(', ')
-                    : 'Todo el día';
-                weekdayCell.innerHTML = `${wdLimit}<br>${wdRanges}`;
+                const wdDailyLimit = (rule.weekday.dailyLimitMinutes !== null && rule.weekday.dailyLimitMinutes !== undefined) ? `${rule.weekday.dailyLimitMinutes} min (Diario)` : 'Sin límite diario';
+                let wdRangesHTML = 'Todo el día';
+                if (rule.weekday.timeRanges && Array.isArray(rule.weekday.timeRanges) && rule.weekday.timeRanges.length > 0) {
+                    wdRangesHTML = rule.weekday.timeRanges.map(range => {
+                        const rangeLimit = (range.limitMinutes !== null && range.limitMinutes !== undefined) ? ` (${range.limitMinutes} min)` : '';
+                        return `${range.startTime || 'N/A'}-${range.endTime || 'N/A'}${rangeLimit}`;
+                    }).join('<br>');
+                }
+                weekdayCell.innerHTML = `${wdDailyLimit}<br>${wdRangesHTML}`;
             } else {
                 weekdayCell.textContent = 'No establecido';
             }
@@ -366,16 +487,20 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
             if (rule.unrestricted) {
                 weekendCell.textContent = 'Ilimitado';
             } else if (rule.weekend) {
-                const weLimit = (rule.weekend.dailyLimitMinutes !== null && rule.weekend.dailyLimitMinutes !== undefined) ? `${rule.weekend.dailyLimitMinutes} min` : 'Sin límite diario';
-                const weRanges = (rule.weekend.timeRanges && Array.isArray(rule.weekend.timeRanges) && rule.weekend.timeRanges.length > 0)
-                    ? rule.weekend.timeRanges.map(range => `${range.startTime || 'N/A'}-${range.endTime || 'N/A'}`).join(', ')
-                    : 'Todo el día';
-                weekendCell.innerHTML = `${weLimit}<br>${weRanges}`;
+                const weDailyLimit = (rule.weekend.dailyLimitMinutes !== null && rule.weekend.dailyLimitMinutes !== undefined) ? `${rule.weekend.dailyLimitMinutes} min (Diario)` : 'Sin límite diario';
+                let weRangesHTML = 'Todo el día';
+                if (rule.weekend.timeRanges && Array.weekend.timeRanges.length > 0) {
+                     weRangesHTML = rule.weekend.timeRanges.map(range => {
+                        const rangeLimit = (range.limitMinutes !== null && range.limitMinutes !== undefined) ? ` (${range.limitMinutes} min)` : '';
+                        return `${range.startTime || 'N/A'}-${range.endTime || 'N/A'}${rangeLimit}`;
+                    }).join('<br>');
+                }
+                weekendCell.innerHTML = `${weDailyLimit}<br>${weRangesHTML}`;
             } else {
                 weekendCell.textContent = 'No establecido';
             }
             row.appendChild(weekendCell);
-            
+
             // Usage Today Column
             const usageTodayCell = document.createElement('td');
             usageTodayCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'text-gray-500');
@@ -431,10 +556,39 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
     modePermissiveRadio.addEventListener('change', () => saveOperationMode('permissive'));
     modeStrictRadio.addEventListener('change', () => saveOperationMode('strict'));
 
+    // Event listener for temporary disable button
+    activateDisableButton.addEventListener('click', async () => {
+        if (!isUnlocked) {
+            disableStatusP.textContent = "Desbloquea la configuración para desactivar temporalmente.";
+            disableStatusP.style.color = 'red';
+            return;
+        }
+
+        const durationMinutes = parseInt(disableDurationInput.value, 10);
+        if (isNaN(durationMinutes) || durationMinutes <= 0) {
+            disableStatusP.textContent = "Por favor, introduce una duración válida en minutos.";
+            disableStatusP.style.color = 'red';
+            return;
+        }
+
+        const now = Date.now();
+        const disableEndTime = now + (durationMinutes * 60 * 1000); // Calculate end time in milliseconds
+
+        await chrome.storage.local.set({ temporaryDisableEndTime: disableEndTime });
+
+        disableStatusP.textContent = `Extensión desactivada temporalmente por ${durationMinutes} minutos.`;
+        disableStatusP.style.color = 'green';
+        setTimeout(() => { disableStatusP.textContent = ''; }, 5000); // Clear status after 5 seconds
+
+        // Optionally, send a message to background script to immediately apply the disable
+        chrome.runtime.sendMessage({ type: "temporaryDisableActivated" }, (response) => {
+             if (chrome.runtime.lastError) { /* console.warn("Error sending temporaryDisableActivated message:", chrome.runtime.lastError.message); */ }
+        });
+    });
+
 
     // Load initial data
-    loadRules();
-    loadOperationMode(); // Load the saved mode on page load
+    // loadRules, loadOperationMode, loadGlobalLimits are called within unlockConfiguration or initializeOptionsPage
 
     // --- Handle Activations Table Date Input Initialization and Rendering ---
     function initializeActivationsTable() {
