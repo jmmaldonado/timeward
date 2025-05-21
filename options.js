@@ -32,15 +32,32 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
     const configSection = document.getElementById('config-section');
     const lockButton = document.getElementById('lockButton');
 
-    // Mode selection elements
-    const modeMonitoringRadio = document.getElementById('modeMonitoring');
-    const modePermissiveRadio = document.getElementById('modePermissive');
-    const modeStrictRadio = document.getElementById('modeStrict');
+    // Mode selection elements (new buttons)
+    const modeMonitoringButton = document.getElementById('modeMonitoringButton');
+    const modePermissiveButton = document.getElementById('modePermissiveButton');
+    const modeStrictButton = document.getElementById('modeStrictButton');
+    const modeButtons = [modeMonitoringButton, modePermissiveButton, modeStrictButton].filter(Boolean); // Filter out nulls if an ID is wrong
+
 
     // Temporary Disable elements
     const disableDurationInput = document.getElementById('disableDuration');
     const activateDisableButton = document.getElementById('activateDisableButton');
     const disableStatusP = document.getElementById('disableStatus');
+    const disableProgressSection = document.getElementById('disable-progress-section');
+    const disableProgressBar = document.getElementById('disable-progress-bar');
+    const disableTimerCountdown = document.getElementById('disable-timer-countdown');
+    const disableProgressMessage = document.getElementById('disable-progress-message');
+
+    // Locked screen elements
+    const lockedRulesSummarySection = document.getElementById('locked-rules-summary-section');
+    const lockedRulesListDiv = document.getElementById('locked-rules-list');
+    const lockedDisableProgressSection = document.getElementById('locked-disable-progress-section');
+    const lockedDisableProgressBar = document.getElementById('locked-disable-progress-bar');
+    const lockedDisableTimerCountdown = document.getElementById('locked-disable-timer-countdown');
+    const lockedDisableProgressMessage = document.getElementById('locked-disable-progress-message');
+    const cancelTemporaryDisableButton = document.getElementById('cancelTemporaryDisableButton');
+    const cancelTemporaryDisableLockedButton = document.getElementById('cancelTemporaryDisableLockedButton');
+
 
     // Global Daily Limits elements
     const globalDailyLimitWeekdayInput = document.getElementById('globalDailyLimitWeekday');
@@ -71,28 +88,106 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
 
     function lockConfiguration() {
         isUnlocked = false;
-        configSection.classList.add('hidden');
-        unlockSection.classList.remove('hidden');
-        createPasswordSection.classList.add('hidden'); // Ensure create is hidden when locking
-        passwordInput.value = ''; // Clear password field on lock
-        unlockStatusP.textContent = ''; // Clear any previous unlock errors
+        if(configSection) configSection.classList.add('hidden');
+        if(unlockSection) unlockSection.classList.remove('hidden');
+        if(createPasswordSection) createPasswordSection.classList.add('hidden'); // Ensure create is hidden when locking
+        if(passwordInput) passwordInput.value = ''; // Clear password field on lock
+        if(unlockStatusP) unlockStatusP.textContent = ''; // Clear any previous unlock errors
+        displayLockedRulesSummary(); // Show summary of rules when locked
+        updateDisableProgress(); // Also update progress bar in locked view
+        if(lockedRulesSummarySection && rulesCache) lockedRulesSummarySection.classList.toggle('hidden', Object.keys(rulesCache).length === 0);
     }
 
     function unlockConfiguration() {
         isUnlocked = true;
-        configSection.classList.remove('hidden');
-        unlockSection.classList.add('hidden');
-        createPasswordSection.classList.add('hidden');
-        passwordInput.value = ''; // Clear password field on unlock
-        unlockStatusP.textContent = '';
+        if(configSection) configSection.classList.remove('hidden');
+        if(unlockSection) unlockSection.classList.add('hidden');
+        if(createPasswordSection) createPasswordSection.classList.add('hidden');
+        if(passwordInput) passwordInput.value = ''; // Clear password field on unlock
+        if(unlockStatusP) unlockStatusP.textContent = '';
+        if(lockedRulesSummarySection) lockedRulesSummarySection.classList.add('hidden'); // Hide locked summary
+        if(lockedDisableProgressSection) lockedDisableProgressSection.classList.add('hidden'); // Hide locked progress bar
+
         // Load rules and settings only after unlocking
         loadRules();
         loadOperationMode();
         loadGlobalLimits(); // Load global limits
         initializeActivationsTable(); // Initialize or re-render activations table
+        updateDisableProgress(); // Update progress bar in main config view
     }
 
     // --- End Password Handling Functions ---
+
+    // --- Temporary Disable Progress Bar Logic ---
+    let disableIntervalId = null;
+
+    function formatTime(totalSeconds) {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`;
+    }
+
+    async function updateDisableProgress() {
+        const { temporaryDisableEndTime, temporaryDisableDuration } = await chrome.storage.local.get(['temporaryDisableEndTime', 'temporaryDisableDuration']);
+
+        if (disableIntervalId) {
+            clearInterval(disableIntervalId);
+            disableIntervalId = null;
+        }
+
+        const now = Date.now();
+        if (temporaryDisableEndTime && temporaryDisableEndTime > now) {
+            const totalDurationMs = temporaryDisableDuration * 60 * 1000; // Original duration in ms
+            
+            const updateView = () => {
+                const currentTime = Date.now();
+                const remainingTimeMs = temporaryDisableEndTime - currentTime;
+
+                if (remainingTimeMs <= 0) {
+                    if (disableIntervalId) clearInterval(disableIntervalId);
+                    disableIntervalId = null;
+                    if(disableProgressSection) disableProgressSection.classList.add('hidden');
+                    if(lockedDisableProgressSection) lockedDisableProgressSection.classList.add('hidden');
+                    chrome.storage.local.remove(['temporaryDisableEndTime', 'temporaryDisableDuration']);
+                    if (isUnlocked && disableStatusP) {
+                        disableStatusP.textContent = 'La desactivación temporal ha finalizado.';
+                        disableStatusP.style.color = 'green';
+                        setTimeout(() => { if(disableStatusP) disableStatusP.textContent = ''; }, 3000);
+                    }
+                    return;
+                }
+
+                const elapsedMs = totalDurationMs - remainingTimeMs;
+                const progressPercentage = Math.min(100, (elapsedMs / totalDurationMs) * 100);
+                const remainingSeconds = Math.ceil(remainingTimeMs / 1000);
+                const timeString = formatTime(remainingSeconds);
+
+                if (isUnlocked) {
+                    if(disableProgressSection) disableProgressSection.classList.remove('hidden');
+                    if(disableProgressBar) disableProgressBar.style.width = `${progressPercentage}%`;
+                    if(disableTimerCountdown) disableTimerCountdown.textContent = timeString;
+                    if(disableProgressMessage) disableProgressMessage.textContent = `Extensión desactivada. Tiempo restante:`;
+                    if(lockedDisableProgressSection) lockedDisableProgressSection.classList.add('hidden');
+                } else { // Locked
+                    if(lockedDisableProgressSection) lockedDisableProgressSection.classList.remove('hidden');
+                    if(lockedDisableProgressBar) lockedDisableProgressBar.style.width = `${progressPercentage}%`;
+                    if(lockedDisableTimerCountdown) lockedDisableTimerCountdown.textContent = timeString;
+                    if(lockedDisableProgressMessage) lockedDisableProgressMessage.textContent = `Extensión desactivada. Tiempo restante:`;
+                    if(disableProgressSection) disableProgressSection.classList.add('hidden');
+                }
+            };
+
+            updateView(); // Initial call
+            disableIntervalId = setInterval(updateView, 1000);
+        } else {
+            if(disableProgressSection) disableProgressSection.classList.add('hidden');
+            if(lockedDisableProgressSection) lockedDisableProgressSection.classList.add('hidden');
+            if (temporaryDisableEndTime && temporaryDisableEndTime <= now) { // Expired
+                 chrome.storage.local.remove(['temporaryDisableEndTime', 'temporaryDisableDuration']);
+            }
+        }
+    }
+    // --- End Temporary Disable Progress Bar Logic ---
 
 
     // --- Global Daily Limits Functions ---
@@ -384,10 +479,49 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
         });
     });
 
+    let rulesCache = {}; // Cache to store rules for faster access
+
+    // Function to display a summary of rules when the configuration is locked
+    async function displayLockedRulesSummary() {
+        if (isUnlocked || !lockedRulesListDiv) return;
+
+        const { rules } = await chrome.storage.local.get('rules');
+        const currentRules = rules || {};
+        rulesCache = currentRules; // Update cache
+
+        if(lockedRulesListDiv) lockedRulesListDiv.innerHTML = ''; // Clear previous summary
+
+        if (Object.keys(currentRules).length === 0) {
+            if(lockedRulesListDiv) lockedRulesListDiv.innerHTML = '<p class="text-sm text-gray-500">No hay reglas configuradas.</p>';
+            if(lockedRulesSummarySection) lockedRulesSummarySection.classList.add('hidden');
+            return;
+        }
+        if(lockedRulesSummarySection) lockedRulesSummarySection.classList.remove('hidden');
+
+
+        const today = new Date().toISOString().split('T')[0];
+        const usageKeyToday = `usage${today}`;
+        const usageTodayData = await chrome.storage.local.get(usageKeyToday);
+        const currentUsageToday = usageTodayData[usageKeyToday] || {};
+
+        for (const host in currentRules) {
+            const rule = currentRules[host];
+            const usageForHostToday = currentUsageToday[host] || { minutes: 0, seconds: 0 };
+            const consumedTime = `${usageForHostToday.minutes} min` + (usageForHostToday.seconds > 0 ? `, ${usageForHostToday.seconds}s` : '');
+
+            const p = document.createElement('p');
+            p.classList.add('text-gray-600');
+            p.innerHTML = `<span class="font-semibold">${host}:</span> ${consumedTime} consumidos hoy.`;
+            if(lockedRulesListDiv) lockedRulesListDiv.appendChild(p);
+        }
+    }
+
+
     // Function to load and display rules in the table
     async function loadRules() {
         const { rules } = await chrome.storage.local.get('rules');
         const currentRules = rules || {};
+        rulesCache = currentRules; // Update cache
         
         if (!rulesListDiv || !rulesTableBody) {
              console.error("Rules list or table body not found.");
@@ -537,58 +671,138 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
         const result = await chrome.storage.local.get('operationMode');
         const savedMode = result.operationMode || 'permissive'; // Default to permissive
 
-        switch (savedMode) {
-            case 'monitoring':
-                modeMonitoringRadio.checked = true;
-                break;
-            case 'strict':
-                modeStrictRadio.checked = true;
-                break;
-            case 'permissive':
-            default:
-                modePermissiveRadio.checked = true;
-                break;
-        }
+        modeButtons.forEach(button => {
+            if (button) { // Check if button exists
+                const isActive = button.dataset.mode === savedMode;
+                button.classList.toggle('bg-blue-500', isActive);
+                button.classList.toggle('text-white', isActive);
+                button.classList.toggle('border-blue-500', isActive);
+                button.classList.toggle('hover:bg-blue-600', isActive);
+
+                button.classList.toggle('bg-white', !isActive);
+                button.classList.toggle('text-gray-700', !isActive);
+                button.classList.toggle('border-gray-300', !isActive);
+                button.classList.toggle('hover:bg-gray-50', !isActive);
+
+                const icon = button.querySelector('svg');
+                if (icon) {
+                    icon.classList.toggle('text-white', isActive);
+                    icon.classList.toggle('text-gray-500', !isActive);
+                }
+                const subtext = button.querySelector('.mode-subtext');
+                if (subtext) {
+                    subtext.classList.toggle('text-white', isActive);
+                    subtext.classList.toggle('text-gray-500', !isActive);
+                }
+            }
+        });
     }
 
-    // Event listeners for mode selection
-    modeMonitoringRadio.addEventListener('change', () => saveOperationMode('monitoring'));
-    modePermissiveRadio.addEventListener('change', () => saveOperationMode('permissive'));
-    modeStrictRadio.addEventListener('change', () => saveOperationMode('strict'));
+    // Event listeners for new mode buttons
+    modeButtons.forEach(button => {
+        if (button) { // Check if button exists
+            button.addEventListener('click', async () => {
+                if (!isUnlocked) {
+                    showStatus("Desbloquea la configuración para cambiar el modo.", true);
+                    return;
+                }
+                const mode = button.dataset.mode;
+                await saveOperationMode(mode);
+                loadOperationMode(); // Reload to update UI styles for all buttons
+            });
+        }
+    });
+
 
     // Event listener for temporary disable button
     activateDisableButton.addEventListener('click', async () => {
         if (!isUnlocked) {
-            disableStatusP.textContent = "Desbloquea la configuración para desactivar temporalmente.";
-            disableStatusP.style.color = 'red';
+            if (disableStatusP) {
+                disableStatusP.textContent = "Desbloquea la configuración para desactivar temporalmente.";
+                disableStatusP.style.color = 'red';
+            }
             return;
         }
 
         const durationMinutes = parseInt(disableDurationInput.value, 10);
         if (isNaN(durationMinutes) || durationMinutes <= 0) {
-            disableStatusP.textContent = "Por favor, introduce una duración válida en minutos.";
-            disableStatusP.style.color = 'red';
+            if (disableStatusP) {
+                disableStatusP.textContent = "Por favor, introduce una duración válida en minutos.";
+                disableStatusP.style.color = 'red';
+            }
             return;
         }
 
         const now = Date.now();
-        const disableEndTime = now + (durationMinutes * 60 * 1000); // Calculate end time in milliseconds
+        const disableEndTime = now + (durationMinutes * 60 * 1000);
 
-        await chrome.storage.local.set({ temporaryDisableEndTime: disableEndTime });
+        await chrome.storage.local.set({ temporaryDisableEndTime: disableEndTime, temporaryDisableDuration: durationMinutes });
+        
+        if (disableStatusP) {
+            disableStatusP.textContent = `Extensión desactivada temporalmente por ${durationMinutes} minutos.`;
+            disableStatusP.style.color = 'green';
+            setTimeout(() => { if(disableStatusP) disableStatusP.textContent = ''; }, 5000);
+        }
+        
+        updateDisableProgress(); // Start or update the progress bar
 
-        disableStatusP.textContent = `Extensión desactivada temporalmente por ${durationMinutes} minutos.`;
-        disableStatusP.style.color = 'green';
-        setTimeout(() => { disableStatusP.textContent = ''; }, 5000); // Clear status after 5 seconds
-
-        // Optionally, send a message to background script to immediately apply the disable
         chrome.runtime.sendMessage({ type: "temporaryDisableActivated" }, (response) => {
              if (chrome.runtime.lastError) { /* console.warn("Error sending temporaryDisableActivated message:", chrome.runtime.lastError.message); */ }
         });
     });
 
+    async function cancelTemporaryDisable() {
+        if (!isUnlocked && !document.getElementById('cancelTemporaryDisableLockedButton')) { // Check if called from locked button if not unlocked
+             if (disableStatusP) {
+                disableStatusP.textContent = "Desbloquea la configuración para reactivar.";
+                disableStatusP.style.color = 'red';
+                setTimeout(() => { if(disableStatusP) disableStatusP.textContent = ''; }, 3000);
+            }
+            // For locked button, it should proceed if password is not the issue.
+            // This check might need refinement based on how locked button is handled.
+            // For now, assume if cancelTemporaryDisableLockedButton exists, it's okay to proceed.
+            if (!document.getElementById('cancelTemporaryDisableLockedButton')) return;
+        }
+
+        if (disableIntervalId) {
+            clearInterval(disableIntervalId);
+            disableIntervalId = null;
+        }
+        await chrome.storage.local.remove(['temporaryDisableEndTime', 'temporaryDisableDuration']);
+        if(disableProgressSection) disableProgressSection.classList.add('hidden');
+        if(lockedDisableProgressSection) lockedDisableProgressSection.classList.add('hidden');
+
+        if (disableStatusP) {
+            disableStatusP.textContent = 'Desactivación temporal cancelada. La extensión está activa.';
+            disableStatusP.style.color = 'green';
+            setTimeout(() => { if(disableStatusP) disableStatusP.textContent = ''; }, 3000);
+        }
+        // Send message to background to re-evaluate state
+        chrome.runtime.sendMessage({ type: "rulesChanged" }); // Or a more specific message like "temporaryDisableCancelled"
+    }
+
+    if(cancelTemporaryDisableButton) {
+        cancelTemporaryDisableButton.addEventListener('click', cancelTemporaryDisable);
+    }
+    if(cancelTemporaryDisableLockedButton) {
+        cancelTemporaryDisableLockedButton.addEventListener('click', async () => {
+            // For the locked button, we don't require full unlock, just proceed to cancel.
+            if (disableIntervalId) {
+                clearInterval(disableIntervalId);
+                disableIntervalId = null;
+            }
+            await chrome.storage.local.remove(['temporaryDisableEndTime', 'temporaryDisableDuration']);
+            if(disableProgressSection) disableProgressSection.classList.add('hidden');
+            if(lockedDisableProgressSection) lockedDisableProgressSection.classList.add('hidden');
+            // No status message here as it's on the locked screen, the bar disappearing is the feedback.
+            chrome.runtime.sendMessage({ type: "rulesChanged" });
+        });
+    }
+
 
     // Load initial data
     // loadRules, loadOperationMode, loadGlobalLimits are called within unlockConfiguration or initializeOptionsPage
+    // updateDisableProgress is called in unlockConfiguration and lockConfiguration
 
     // --- Handle Activations Table Date Input Initialization and Rendering ---
     function initializeActivationsTable() {
@@ -853,21 +1067,22 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for in
             const storedPassword = result.configPassword;
 
             if (!storedPassword) {
-                // No password set - show creation section
-                createPasswordSection.classList.remove('hidden');
-                unlockSection.classList.add('hidden');
-                configSection.classList.add('hidden');
+                if(createPasswordSection) createPasswordSection.classList.remove('hidden');
+                if(unlockSection) unlockSection.classList.add('hidden');
+                if(configSection) configSection.classList.add('hidden');
             } else {
-                // Password exists - show unlock section
-                unlockSection.classList.remove('hidden');
-                createPasswordSection.classList.add('hidden');
-                configSection.classList.add('hidden');
+                if(unlockSection) unlockSection.classList.remove('hidden');
+                if(createPasswordSection) createPasswordSection.classList.add('hidden');
+                if(configSection) configSection.classList.add('hidden');
+                // Initial check for active disable when page loads in locked state
+                displayLockedRulesSummary();
+                updateDisableProgress();
             }
         } catch (error) {
             console.error("Error checking password:", error);
-            unlockSection.classList.remove('hidden'); // Fallback to unlock section on error
-            createPasswordSection.classList.add('hidden');
-            configSection.classList.add('hidden');
+            if(unlockSection) unlockSection.classList.remove('hidden'); 
+            if(createPasswordSection) createPasswordSection.classList.add('hidden');
+            if(configSection) configSection.classList.add('hidden');
             showUnlockStatus("Error al verificar la contraseña.", true);
         }
     }

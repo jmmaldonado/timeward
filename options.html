@@ -27,6 +27,26 @@
             <input type="password" id="passwordInput" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
             <button id="unlockButton" class="mt-3 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">Desbloquear</button>
             <p id="unlockStatus" class="mt-2 text-sm text-red-600"></p>
+
+            <!-- Locked Rules Summary Section -->
+            <div id="locked-rules-summary-section" class="mt-6 hidden">
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">Resumen de Reglas Activas:</h3>
+                <div id="locked-rules-list" class="space-y-2 text-sm">
+                    <!-- Locked rules will be populated here by JS -->
+                    <!-- Example: <p>youtube.com: 30/60 mins consumidos hoy</p> -->
+                </div>
+            </div>
+             <!-- Progress Bar for Disabled State (also shown when locked but disabled) -->
+            <div id="locked-disable-progress-section" class="hidden mt-6 p-4 border border-yellow-300 rounded-md bg-yellow-50">
+                <p id="locked-disable-progress-message" class="text-sm text-yellow-700 mb-2">Extensión temporalmente desactivada.</p>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="locked-disable-progress-bar" class="bg-yellow-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between items-center">
+                    <p id="locked-disable-timer-countdown" class="text-xs text-yellow-600 mt-1">Calculando...</p>
+                    <button id="cancelTemporaryDisableLockedButton" class="mt-2 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 text-xs">Reactivar Ahora</button>
+                </div>
+            </div>
         </div>
 
         <!-- Main Configuration Section (Initially Hidden) -->
@@ -36,142 +56,160 @@
                 <button id="lockButton" class="px-3 py-1 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 text-sm">Bloquear</button>
             </div>
 
+            <!-- Mode of Operation Section -->
             <h2 class="text-xl font-semibold mb-3 mt-6">Modo de Operación</h2>
-        <div class="mb-6">
-            <p class="block text-sm font-medium text-gray-700 mb-2">Selecciona el modo en que la extensión controlará tu navegación:</p>
-            <div class="flex items-center space-x-4">
-                <div class="flex items-center">
-                    <input type="radio" id="modeMonitoring" name="operationMode" value="monitoring" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
-                    <label for="modeMonitoring" class="ml-2 block text-sm text-gray-900 font-normal">Monitorización (Solo registra, no bloquea)</label>
+            <div class="mb-6">
+                <p class="block text-sm font-medium text-gray-700 mb-2">Selecciona el modo en que la extensión controlará tu navegación:</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+                    <button id="modeMonitoringButton" data-mode="monitoring" class="mode-button flex flex-col items-center justify-center p-4 border rounded-lg shadow hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-150 ease-in-out">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 mb-2 text-gray-500"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                        <span class="text-sm font-medium">Monitorización</span>
+                        <span class="mode-subtext text-xs text-gray-500 mt-1 text-center">Solo registra, no bloquea</span>
+                    </button>
+                    <button id="modePermissiveButton" data-mode="permissive" class="mode-button flex flex-col items-center justify-center p-4 border rounded-lg shadow hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-150 ease-in-out">
+                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 mb-2 text-gray-500"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                        <span class="text-sm font-medium">Permisivo</span>
+                        <span class="mode-subtext text-xs text-gray-500 mt-1 text-center">Bloquea solo con reglas activas</span>
+                    </button>
+                    <button id="modeStrictButton" data-mode="strict" class="mode-button flex flex-col items-center justify-center p-4 border rounded-lg shadow hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-150 ease-in-out">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 mb-2 text-gray-500"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                        <span class="text-sm font-medium">Estricto</span>
+                        <span class="mode-subtext text-xs text-gray-500 mt-1 text-center">Bloquea todo excepto con reglas activas</span>
+                    </button>
                 </div>
-                <div class="flex items-center">
-                    <input type="radio" id="modePermissive" name="operationMode" value="permissive" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" checked>
-                    <label for="modePermissive" class="ml-2 block text-sm text-gray-900 font-normal">Permisivo (Bloquea solo sitios con reglas fuera de horario/límite)</label>
+            </div>
+
+            <!-- Disable Temporarily Section -->
+            <h2 class="text-xl font-semibold mb-3 mt-6">Desactivar Temporalmente</h2>
+            <div id="temporary-disable-section" class="mb-6 p-4 border border-yellow-300 rounded-md bg-yellow-50">
+                <p class="text-sm text-gray-600 mb-2">Desactiva temporalmente las restricciones de navegación por un período determinado.</p>
+                <div class="flex items-center space-x-2">
+                    <label for="disableDuration" class="block text-sm font-medium text-gray-700">Duración (minutos):</label>
+                    <input type="number" id="disableDuration" min="1" value="30" class="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-yellow-500 focus:border-yellow-500">
+                    <button id="activateDisableButton" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 text-sm">Desactivar</button>
                 </div>
-                <div class="flex items-center">
-                    <input type="radio" id="modeStrict" name="operationMode" value="strict" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
-                    <label for="modeStrict" class="ml-2 block text-sm text-gray-900 font-normal">Estricto (Bloquea todo excepto sitios con reglas dentro de horario/límite)</label>
+                <p id="disableStatus" class="mt-2 text-sm text-green-600"></p>
+            </div>
+
+            <!-- Progress Bar Section for Temporary Disable -->
+            <div id="disable-progress-section" class="hidden mb-6 p-4 border border-blue-300 rounded-md bg-blue-50">
+                <p id="disable-progress-message" class="text-sm text-blue-700 mb-2">Extensión temporalmente desactivada.</p>
+                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                    <div id="disable-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between items-center">
+                    <p id="disable-timer-countdown" class="text-xs text-blue-600 mt-1">Calculando...</p>
+                    <button id="cancelTemporaryDisableButton" class="mt-2 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 text-xs">Reactivar Ahora</button>
                 </div>
             </div>
-        </div>
 
-        <h2 class="text-xl font-semibold mb-3 mt-6">Límite Diario Global</h2>
-        <div class="mb-6 p-4 border border-gray-300 rounded-md">
-            <p class="text-sm text-gray-600 mb-3">Establece un límite de tiempo de navegación total por día, aplicable a todos los sitios web.</p>
-
-            <div class="mb-4">
-                <label for="globalDailyLimitWeekday" class="block text-sm font-medium text-gray-700 mb-1">Límite diario para días de semana (Lun-Vie) (minutos):</label>
-                <input type="number" id="globalDailyLimitWeekday" min="0" placeholder="ej: 120" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            <!-- Global Daily Limits Section -->
+            <h2 class="text-xl font-semibold mb-3 mt-6">Límite Diario Global</h2>
+            <div class="mb-6 p-4 border border-gray-300 rounded-md">
+                <p class="text-sm text-gray-600 mb-3">Establece un límite de tiempo de navegación total por día, aplicable a todos los sitios web.</p>
+                <div class="mb-4">
+                    <label for="globalDailyLimitWeekday" class="block text-sm font-medium text-gray-700 mb-1">Límite diario para días de semana (Lun-Vie) (minutos):</label>
+                    <input type="number" id="globalDailyLimitWeekday" min="0" placeholder="ej: 120" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="globalDailyLimitWeekend" class="block text-sm font-medium text-gray-700 mb-1">Límite diario para fines de semana (Sáb-Dom) (minutos):</label>
+                    <input type="number" id="globalDailyLimitWeekend" min="0" placeholder="ej: 180" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <button id="saveGlobalLimitsButton" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Guardar Límites Globales</button>
+                <p id="globalLimitsStatus" class="mt-2 text-sm text-green-600"></p>
             </div>
+            
+            <h2 class="text-xl font-semibold mb-3 mt-6">Añadir/Modificar Regla</h2>
+            <div class="mb-6">
+                <label for="hostname" class="block text-sm font-medium text-gray-700 mb-1">Sitio web (ej: youtube.com, sin http/www):</label>
+                <input type="text" id="hostname" placeholder="ej: youtube.com" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
 
-            <div class="mb-4">
-                <label for="globalDailyLimitWeekend" class="block text-sm font-medium text-gray-700 mb-1">Límite diario para fines de semana (Sáb-Dom) (minutos):</label>
-                <input type="number" id="globalDailyLimitWeekend" min="0" placeholder="ej: 180" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-            </div>
-            <button id="saveGlobalLimitsButton" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Guardar Límites Globales</button>
-            <p id="globalLimitsStatus" class="mt-2 text-sm text-green-600"></p>
-        </div>
+                <div class="flex items-center mt-2">
+                    <input type="checkbox" id="unrestricted" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="unrestricted" class="ml-2 block text-sm text-gray-900 font-normal">Acceso ilimitado</label>
+                </div>
 
-        <h2 class="text-xl font-semibold mb-3 mt-6">Añadir/Modificar Regla</h2>
-        <div class="mb-6">
-            <label for="hostname" class="block text-sm font-medium text-gray-700 mb-1">Sitio web (ej: youtube.com, sin http/www):</label>
-            <input type="text" id="hostname" placeholder="ej: youtube.com" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-
-            <div class="flex items-center mt-2">
-                <input type="checkbox" id="unrestricted" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                <label for="unrestricted" class="ml-2 block text-sm text-gray-900 font-normal">Acceso ilimitado</label>
-            </div>
-
-            <div class="mt-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Aplicar regla a:</label>
-                <div class="flex items-center space-x-4">
-                    <div class="flex items-center">
-                        <input type="radio" id="ruleTypeWeekday" name="ruleType" value="weekday" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" checked>
-                        <label for="ruleTypeWeekday" class="ml-2 block text-sm text-gray-900 font-normal">Días de semana (Lun-Vie)</label>
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Aplicar regla a:</label>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center">
+                            <input type="radio" id="ruleTypeWeekday" name="ruleType" value="weekday" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" checked>
+                            <label for="ruleTypeWeekday" class="ml-2 block text-sm text-gray-900 font-normal">Días de semana (Lun-Vie)</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" id="ruleTypeWeekend" name="ruleType" value="weekend" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                            <label for="ruleTypeWeekend" class="ml-2 block text-sm text-gray-900 font-normal">Fin de semana (Sáb-Dom)</label>
+                        </div>
                     </div>
-                    <div class="flex items-center">
-                        <input type="radio" id="ruleTypeWeekend" name="ruleType" value="weekend" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
-                        <label for="ruleTypeWeekend" class="ml-2 block text-sm text-gray-900 font-normal">Fin de semana (Sáb-Dom)</label>
+                </div>
+
+                <div id="limits-section" class="mt-4">
+                    <label for="dailyLimit" class="block text-sm font-medium text-gray-700 mb-1">Límite diario (minutos):</label>
+                    <input type="number" id="dailyLimit" min="0" placeholder="ej: 30" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+
+                    <label class="block text-sm font-medium text-gray-700 mb-1 mt-3">Horarios permitidos:</label>
+                    <div id="timeRangesContainer" class="space-y-2">
+                        <!-- Time range inputs will be added here by options.js -->
                     </div>
+                    <button type="button" id="addTimeRangeButton" class="mt-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-sm">Añadir Horario</button>
                 </div>
+                <button id="saveRule" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">Guardar Regla</button>
+                <p id="status" class="mt-3 text-sm text-green-600"></p>
             </div>
 
-            <div id="limits-section" class="mt-4">
-                <label for="dailyLimit" class="block text-sm font-medium text-gray-700 mb-1">Límite diario (minutos):</label>
-                <input type="number" id="dailyLimit" min="0" placeholder="ej: 30" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-
-                <label class="block text-sm font-medium text-gray-700 mb-1 mt-3">Horarios permitidos:</label>
-                <div id="timeRangesContainer" class="space-y-2">
-                    <!-- Time range inputs will be added here by options.js -->
-                </div>
-                <button type="button" id="addTimeRangeButton" class="mt-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-sm">Añadir Horario</button>
-            </div>
-            <button id="saveRule" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">Guardar Regla</button>
-            <p id="status" class="mt-3 text-sm text-green-600"></p>
-        </div>
-
-        <h2 class="text-xl font-semibold mb-3 mt-6">Reglas Actuales</h2>
-        <div id="rulesList" class="space-y-4">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sitio Web</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Días de Semana (Horarios y Límite)</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fin de Semana (Horarios y Límite)</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiempo Hoy</th>
-                    </tr>
-                </thead>
-                <tbody id="rulesTableBody" class="bg-white divide-y divide-gray-200">
-                    <!-- Rule items will be added here by options.js -->
-                </tbody>
-            </table>
-        </div>
-
-        <button id="clearTrackingData" class="mt-6 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">Borrar Datos de Uso y Pestañas Visitadas</button>
-
-        <h2 class="text-xl font-semibold mb-3 mt-6">Tabla de Activaciones</h2>
-        <div class="mb-6">
-            <div class="flex items-center space-x-4 mb-4">
-                <div>
-                    <label for="activationDate" class="block text-sm font-medium text-gray-700 mb-1">Seleccionar fecha:</label>
-                    <input type="date" id="activationDate" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="timeResolution" class="block text-sm font-medium text-gray-700 mb-1">Resolución de tiempo:</label>
-                    <select id="timeResolution" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                        <option value="day">Todo el día</option>
-                        <option value="hour">Última hora</option>
-                        <option value="2hours">Últimas 2 horas</option>
-                        <option value="4hours">Últimas 4 horas</option>
-                        <option value="8hours">Últimas 8 horas</option>
-                    </select>
-                </div>
-            </div>
-            <div id="activationsTableContainer" class="mt-4">
+            <h2 class="text-xl font-semibold mb-3 mt-6">Reglas Actuales</h2>
+            <div id="rulesList" class="space-y-4">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sitio Web</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Días de Semana (Horarios y Límite)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fin de Semana (Horarios y Límite)</th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiempo Hoy</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
                         </tr>
                     </thead>
-                    <tbody id="activationsTableBody" class="bg-white divide-y divide-gray-200">
-                        <!-- Activation table rows will be added here by options.js -->
+                    <tbody id="rulesTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Rule items will be added here by options.js -->
                     </tbody>
                 </table>
             </div>
+
+            <h2 class="text-xl font-semibold mb-3 mt-6">Tabla de Activaciones</h2>
+            <div class="mb-6">
+                <div class="flex flex-col sm:flex-row sm:items-end sm:space-x-4 mb-4">
+                    <div class="mb-2 sm:mb-0">
+                        <label for="activationDate" class="block text-sm font-medium text-gray-700 mb-1">Seleccionar fecha:</label>
+                        <input type="date" id="activationDate" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div class="mb-2 sm:mb-0">
+                        <label for="timeResolution" class="block text-sm font-medium text-gray-700 mb-1">Resolución de tiempo:</label>
+                        <select id="timeResolution" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="day">Todo el día</option>
+                            <option value="hour">Última hora</option>
+                            <option value="2hours">Últimas 2 horas</option>
+                            <option value="4hours">Últimas 4 horas</option>
+                            <option value="8hours">Últimas 8 horas</option>
+                        </select>
+                    </div>
+                    <div class="mt-2 sm:mt-0">
+                         <button id="clearTrackingData" class="w-full sm:w-auto px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">Borrar Datos de Uso</button>
+                    </div>
+                </div>
+                <div id="activationsTableContainer" class="mt-4">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sitio Web</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiempo Hoy</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activationsTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Activation table rows will be added here by options.js -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        <h2 class="text-xl font-semibold mb-3 mt-6">Desactivar Temporalmente</h2>
-        <div id="temporary-disable-section" class="mb-6 p-4 border border-yellow-300 rounded-md bg-yellow-50">
-            <p class="text-sm text-gray-600 mb-2">Desactiva temporalmente las restricciones de navegación por un período determinado.</p>
-            <div class="flex items-center space-x-2">
-                <label for="disableDuration" class="block text-sm font-medium text-gray-700">Duración (minutos):</label>
-                <input type="number" id="disableDuration" min="1" value="30" class="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-yellow-500 focus:border-yellow-500">
-                <button id="activateDisableButton" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 text-sm">Desactivar</button>
-            </div>
-            <p id="disableStatus" class="mt-2 text-sm text-green-600"></p>
-        </div>
         </div> <!-- End of config-section -->
 
     </div>
